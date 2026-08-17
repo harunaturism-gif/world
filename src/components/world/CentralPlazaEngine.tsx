@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import * as PIXI from 'pixi.js';
+import { AvatarService } from '../../services/AvatarService';
+
 
 interface CentralPlazaEngineProps {
+  roomId?: string;
+  roomType?: string;
   onInteract: (msg: string) => void;
   onOpenProfile?: (username: string) => void;
   onPresenceUpdate?: (count: number) => void;
@@ -9,8 +13,9 @@ interface CentralPlazaEngineProps {
   outboundChatMessage?: string | null;
 }
 
-export function CentralPlazaEngine({ onInteract, onOpenProfile, onPresenceUpdate, onChatMessage, outboundChatMessage }: CentralPlazaEngineProps) {
+export function CentralPlazaEngine({ roomId, roomType, onInteract, onOpenProfile, onPresenceUpdate, onChatMessage, outboundChatMessage }: CentralPlazaEngineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  console.log("Rendering room", roomId, roomType);
   const interactRef = useRef(onInteract);
   const openProfileRef = useRef(onOpenProfile);
   const presenceRef = useRef(onPresenceUpdate);
@@ -70,6 +75,16 @@ export function CentralPlazaEngine({ onInteract, onOpenProfile, onPresenceUpdate
 
     app.stage.addChild(isoContainer);
 
+
+    const getColorForName = (name: string) => {
+      let hash = 0;
+      for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+      return parseInt("00000".substring(0, 6 - c.length) + c, 16);
+    };
+
     // --- 1. Floor Generation ---
     const floorSize = 800;
     const floorGraphics = new PIXI.Graphics();
@@ -93,7 +108,8 @@ export function CentralPlazaEngine({ onInteract, onOpenProfile, onPresenceUpdate
 
     // Player Character
     const player = new PIXI.Graphics();
-    player.beginFill(0x3b82f6); // blue-500
+    const localAvatarState = AvatarService.getAvatar("dev-user-1");
+    player.beginFill(localAvatarState.baseColor);
     player.drawCircle(0, 0, 15);
     player.endFill();
     player.x = 0;
@@ -144,17 +160,34 @@ export function CentralPlazaEngine({ onInteract, onOpenProfile, onPresenceUpdate
       return obj;
     };
 
-    // Cafe (Blue)
-    createObject(-200, -200, 160, 160, 0x1e3a8a, "You enter Luna's Cafe. The smell of digital espresso fills the air.");
 
-    // Bench (Green)
-    createObject(100, 100, 80, 40, 0x064e3b, "You sit on the bench and watch the humans pass by.");
+    if (roomType === 'cafe') {
+      createObject(-100, -100, 200, 80, 0x1e3a8a, "You ordered a digital espresso.");
+      createObject(-150, 50, 40, 40, 0x475569, "You sit at a cafe table.");
+      createObject(100, 50, 40, 40, 0x475569, "You sit at a cafe table.");
+    } else if (roomType === 'arcade') {
+      createObject(-150, -150, 60, 60, 0x4c1d95, "You interact with the Neon Arcade machine. Loading mini-game...");
+      createObject(-50, -150, 60, 60, 0xbe185d, "Playing Dance Dance Virtual...");
+      createObject(50, -150, 60, 60, 0x4338ca, "Playing Space Invaders 3000...");
+    } else if (roomType === 'gallery') {
+      createObject(-200, -100, 20, 200, 0x7e22ce, "Viewing abstract digital art piece #1.");
+      createObject(180, -100, 20, 200, 0xbe123c, "Viewing abstract digital art piece #2.");
+    } else if (roomType === 'lounge') {
+      createObject(-100, -50, 200, 100, 0x065f46, "Relaxing on the lounge sofa.");
+    } else if (roomType === 'shop') {
+      createObject(-100, -150, 200, 60, 0xb45309, "Browsing digital goods at the shop counter.");
+      createObject(-100, 50, 60, 60, 0x475569, "Looking at a display rack.");
+    } else {
+      // Default Plaza
+      createObject(-200, -200, 160, 160, 0x1e3a8a, "You enter Luna's Cafe. The smell of digital espresso fills the air.");
+      createObject(100, 100, 80, 40, 0x064e3b, "You sit on the bench and watch the humans pass by.");
+      createObject(-50, 200, 80, 80, 0x4c1d95, "You interact with the Neon Arcade machine. Loading mini-game...");
+    }
 
-    // Arcade (Purple)
-    createObject(-50, 200, 80, 80, 0x4c1d95, "You interact with the Neon Arcade machine. Loading mini-game...");
 
     // --- 3. Multiplayer Realtime Connection ---
-    const ws = new WebSocket('ws://localhost:3001');
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     const remotePlayers = new Map<string, { graphics: PIXI.Graphics, targetX: number, targetY: number }>();
 
@@ -163,7 +196,7 @@ export function CentralPlazaEngine({ onInteract, onOpenProfile, onPresenceUpdate
     };
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'join', roomId: 'central-plaza' }));
+      ws.send(JSON.stringify({ type: 'join', roomId: roomId || 'central-plaza' }));
     };
 
     ws.onmessage = (event) => {
@@ -204,7 +237,7 @@ export function CentralPlazaEngine({ onInteract, onOpenProfile, onPresenceUpdate
 
     const spawnRemotePlayer = (id: string, x: number, y: number, name: string) => {
       const rpGraphics = new PIXI.Graphics();
-      rpGraphics.beginFill(0xa1a1aa); // zinc-400
+      rpGraphics.beginFill(getColorForName(name));
       rpGraphics.drawCircle(0, 0, 15);
       rpGraphics.endFill();
       rpGraphics.x = x;
@@ -283,7 +316,7 @@ export function CentralPlazaEngine({ onInteract, onOpenProfile, onPresenceUpdate
       ws.close();
       app.destroy(true, { children: true });
     };
-  }, []); // Empty dependency array so engine only initializes once
+  }, [roomId, roomType]);
 
   return (
     <div className="relative w-full h-full">

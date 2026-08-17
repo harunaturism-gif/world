@@ -9,6 +9,19 @@ interface SocialFeedProps {
 }
 
 export function SocialFeed({ onEnterRoom, currentUser }: SocialFeedProps) {
+  const [likedPosts, setLikedPosts] = useState<Set<number>>(new Set());
+
+  const handleLike = async (id: number) => {
+    await FeedService.likePost(id);
+    // Refresh the feed to get updated data from the source of truth
+    loadFeed();
+    setLikedPosts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
   const [posts, setPosts] = useState<PostData[]>([]);
   const [loading, setLoading] = useState(true);
   const [newPostContent, setNewPostContent] = useState('');
@@ -139,9 +152,9 @@ export function SocialFeed({ onEnterRoom, currentUser }: SocialFeedProps) {
               )}
 
               <div className="flex items-center gap-6 mt-4 text-zinc-500">
-                <button className="flex items-center gap-1.5 hover:text-rose-400 transition-colors">
-                  <Heart size={16} />
-                  <span className="text-xs">{post.likes}</span>
+                <button onClick={() => handleLike(post.id)} className={`flex items-center gap-1.5 transition-colors ${likedPosts.has(post.id) ? 'text-rose-400' : 'hover:text-rose-400'}`}>
+                  <Heart size={16} className={likedPosts.has(post.id) ? "fill-current" : ""} />
+                  <span className="text-xs">{post.likes + (likedPosts.has(post.id) ? 1 : 0)}</span>
                 </button>
                 <button className="flex items-center gap-1.5 hover:text-white transition-colors">
                   <MessageCircle size={16} />

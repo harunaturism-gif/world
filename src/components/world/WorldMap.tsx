@@ -80,7 +80,7 @@ export function WorldMap({ onEnterRoom, currentUser }: WorldMapProps) {
               <div className="text-white font-medium text-sm">{space.name}</div>
               <div className="text-zinc-500 text-xs flex items-center gap-1">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                {Math.floor(Math.random() * 20) + 1} online {/* Mock presence for node */}
+                {space.presence || 1} online
               </div>
             </div>
             <ChevronRight size={16} className="text-zinc-600 group-hover:text-white transition-colors ml-2" />

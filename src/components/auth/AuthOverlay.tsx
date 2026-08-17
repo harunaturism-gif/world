@@ -1,6 +1,6 @@
 import { ShieldCheck } from 'lucide-react';
-import { MiniKit } from '@worldcoin/minikit-js';
 import { useState } from 'react';
+import { AuthService } from '../../services/AuthService';
 
 interface AuthOverlayProps {
   onSuccess: (user: { id: string; username: string }) => void;
@@ -11,30 +11,8 @@ export function AuthOverlay({ onSuccess }: AuthOverlayProps) {
 
   const handleAuth = async () => {
     setLoading(true);
-    if (!MiniKit.isInstalled()) {
-      // Dev mock auth
-      setTimeout(() => {
-        onSuccess({ id: 'dev-user-1', username: 'DevCitizen' });
-        setLoading(false);
-      }, 500);
-      return;
-    }
-
-    try {
-      const result = await MiniKit.walletAuth({
-        nonce: crypto.randomUUID().replace(/-/g, '').substring(0, 16),
-        statement: 'Sign in to Human World',
-        expirationTime: new Date(Date.now() + 1000 * 60 * 60)
-      });
-
-      if (result.executedWith !== 'fallback' && result.data?.address) {
-        // Mock successful verify callback for demo purposes
-        // Real app would verify SIWE on backend
-        onSuccess({ id: result.data.address, username: `Human_${result.data.address.substring(2, 6)}` });
-      }
-    } catch (e) {
-      console.error(e);
-    }
+    const user = await AuthService.authenticate();
+    if (user) onSuccess(user);
     setLoading(false);
   };
 

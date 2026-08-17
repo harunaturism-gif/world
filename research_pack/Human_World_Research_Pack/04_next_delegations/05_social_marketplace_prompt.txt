@@ -1,7 +1,0 @@
-Design the integrated Human World social/economic layer.
-
-Include profiles, posts, following, messaging, land pages, offers, trade requests, direct trades, auctions, district communities, business pages, property pages and notifications.
-
-The social layer must interact directly with the economy.
-
-Produce the minimum viable version and later versions. Do not build it yet; produce product specification and data model.

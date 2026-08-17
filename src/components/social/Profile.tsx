@@ -92,6 +92,10 @@ export function Profile({ username = "Citizen_0x89", onClose, currentUserId }: P
           </div>
         </div>
 
+        {currentUserId && profile && currentUserId === profile.id && (
+          <button onClick={() => window.dispatchEvent(new CustomEvent('open-avatar-customizer'))} className="w-full py-2 bg-zinc-800 text-white rounded-xl mb-6 hover:bg-zinc-700">Customize Avatar</button>
+        )}
+
         <div className="text-zinc-300 text-sm mb-6">
           {displayBio}
         </div>
