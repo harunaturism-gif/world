@@ -1,0 +1,15 @@
+Do NOT design a token launch.
+
+Adversarially compare:
+A. no token
+B. internal non-tradable HUM
+C. tradable token later
+D. WLD-only economy
+E. dual currency
+
+Analyze inflation, speculation, incentives, liquidity, stability, regulation, gameplay, investors, concentration and dependence on new users.
+
+Answer:
+WHAT PROBLEM DOES A TOKEN SOLVE THAT AN INTERNAL ACCOUNTING UNIT CANNOT?
+
+If none, recommend no token. If justified, define conditions that must exist before launch.

@@ -1,0 +1,17 @@
+Only after the economic constitution and simulator pass.
+
+Design the technical architecture for a solo founder using AI tools.
+
+Target:
+World Mini App
+World ID
+World Chain
+Next.js/React
+Supabase
+Vercel
+
+Separate on-chain and off-chain state.
+
+Specify database schema, smart contracts required, APIs, authentication, World ID verification, marketplace, auction engine, social system, notifications, economic engine, indexing, analytics, anti-abuse, testing and deployment.
+
+Do not write production code yet.

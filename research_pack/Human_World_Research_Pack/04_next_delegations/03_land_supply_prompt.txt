@@ -1,0 +1,9 @@
+Compare and simulate:
+A. Fixed absolute supply
+B. Fixed land/human ratio
+C. Dynamic frontier issuance
+D. Hybrid permanent geography + dynamically released plots
+
+For each compare scarcity, new-player access, early-adopter advantage, concentration, price stability, growth, shortage risk and oversupply risk at 100K/1M/10M humans.
+
+Do not choose a model before running the numbers.
