@@ -21,11 +21,23 @@ export const AuthService = {
       });
 
       if (result.status === "success") {
-        const id = crypto.randomUUID().replace(/-/g, '').substring(0, 16);
-        return {
-          id: id,
-          username: `Human_${id.substring(0, 4).toUpperCase()}`
-        };
+        // Exchange proof for a Supabase-compatible JWT
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const verifyRes = await fetch(`${backendUrl}/api/auth/verify`, {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ proof: result, nullifier_hash: crypto.randomUUID().replace(/-/g, '').substring(0, 16) }) // sending random nullifier mock
+        });
+
+        if (verifyRes.ok) {
+           const { token, user } = await verifyRes.json();
+
+           // Inject token into Supabase client to satisfy RLS
+           const { supabase } = await import('../lib/supabase');
+           await supabase.auth.setSession({ access_token: token, refresh_token: token });
+
+           return user;
+        }
       }
     } catch (e) {
       console.error('Auth error', e);

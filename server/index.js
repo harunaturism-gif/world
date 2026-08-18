@@ -5,6 +5,36 @@ import crypto from 'crypto';
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
+import jwt from 'jsonwebtoken';
+app.use(express.json());
+// Auth Bridge: World ID -> Supabase JWT
+app.post('/api/auth/verify', async (req, res) => {
+    const { proof, nullifier_hash } = req.body;
+    if (!proof) {
+        return res.status(400).json({ error: 'Missing proof' });
+    }
+    // 1. In a real app, verify the proof against the World ID API here.
+    // We mock a successful verification for now since we don't have the App ID configured.
+    const isValid = true;
+    if (isValid) {
+        // 2. We use the nullifier_hash as the stable internal identity (canonical user ID)
+        const userId = nullifier_hash || crypto.randomUUID();
+        // 3. Sign a JWT that Supabase RLS will accept.
+        // Must match VITE_SUPABASE_JWT_SECRET in production
+        const supabaseJwtSecret = process.env.SUPABASE_JWT_SECRET || 'super-secret-mock-jwt-key-for-local-dev-only-12345';
+        const payload = {
+            aud: 'authenticated',
+            exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24), // 1 day
+            sub: userId,
+            role: 'authenticated'
+        };
+        const token = jwt.sign(payload, supabaseJwtSecret);
+        return res.json({ token, user: { id: userId, username: `Human_${userId.substring(0, 6)}` } });
+    }
+    else {
+        return res.status(401).json({ error: 'Invalid proof' });
+    }
+});
 const rooms = new Map();
 wss.on('connection', (ws) => {
     let currentRoom = null;
