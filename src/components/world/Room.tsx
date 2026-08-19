@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { ArrowLeft, Users, Info } from 'lucide-react';
+import { ArrowLeft, Users, Info, Coffee, GalleryVerticalEnd, Building2 } from 'lucide-react';
 import { Chat } from '../social/Chat';
 import { CentralPlazaEngine } from './CentralPlazaEngine';
 import { RoomService, RoomData } from '../../services/RoomService';
@@ -16,14 +16,14 @@ export interface ChatMessage {
 interface RoomProps {
   roomId: string;
   onLeave: () => void;
+  onEnterRoom: (roomId: string) => void;
   onOpenProfile?: (username: string) => void;
 }
 
-export function Room({ roomId, onLeave, onOpenProfile }: RoomProps) {
+export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [presenceCount, setPresenceCount] = useState<number>(1);
-  const [incomingMessage, setIncomingMessage] = useState<ChatMessage | null>(null);
-  const [outboundMessage, setOutboundMessage] = useState<string | null>(null);
+  const [incomingMessage] = useState<ChatMessage | null>(null);
   const [roomData, setRoomData] = useState<RoomData | null>(null);
   const [showInspector, setShowInspector] = useState(false);
   const [isDisconnected, setIsDisconnected] = useState(false);
@@ -31,27 +31,7 @@ export function Room({ roomId, onLeave, onOpenProfile }: RoomProps) {
 
 
   useEffect(() => {
-    // Basic mock fetch for the current room data to pass to the Inspector
-    const fetchRoom = async () => {
-      const rooms = await RoomService.getRooms();
-      const match = rooms.find(r => r.id === roomId);
-      if (match) {
-        setRoomData(match);
-      } else {
-        // Fallback for hardcoded rooms if they aren't in Supabase/Mock yet
-        setRoomData({
-          id: roomId,
-          name: roomId.replace('-', ' '),
-          owner_id: null,
-          type: 'public',
-          capacity: 50,
-          is_public: true,
-          created_at: new Date().toISOString(),
-          top: '0%', left: '0%'
-        });
-      }
-    };
-    fetchRoom();
+    setRoomData(RoomService.getRoom(roomId));
   }, [roomId]);
 
   const handleInteract = useCallback((message: string) => {
@@ -65,14 +45,7 @@ export function Room({ roomId, onLeave, onOpenProfile }: RoomProps) {
     setPresenceCount(count);
   }, []);
 
-  const handleIncomingChat = useCallback((message: ChatMessage) => {
-    setIncomingMessage(message);
-  }, []);
-
-  const handleSendChat = useCallback((text: string) => {
-    setOutboundMessage(text);
-    setTimeout(() => setOutboundMessage(null), 50);
-  }, []);
+  const handleSendChat = useCallback((text: string) => { setToast(`You said: ${text}`); setTimeout(() => setToast(null), 3000); }, []);
 
   return (
     <div className="absolute inset-0 bg-zinc-950 flex flex-col">
@@ -106,13 +79,10 @@ export function Room({ roomId, onLeave, onOpenProfile }: RoomProps) {
       {/* PIXI WebGL Engine Container */}
       <div className="flex-1 relative">
         <CentralPlazaEngine
-          roomId={roomId}
           roomType={roomData?.type}
           onInteract={handleInteract}
           onOpenProfile={onOpenProfile}
           onPresenceUpdate={handlePresenceUpdate}
-          onChatMessage={handleIncomingChat}
-          outboundChatMessage={outboundMessage}
         />
 
         {/* Interaction Toast Overlay */}
@@ -129,7 +99,13 @@ export function Room({ roomId, onLeave, onOpenProfile }: RoomProps) {
         )}
       </div>
 
-      {roomData && roomData.type === 'public' && <InWorldAd placementId="central-1" roomName={roomData.name} />}
+      <div className="absolute right-3 top-20 z-30 flex flex-col gap-2">
+        <button aria-label="Central Plaza" onClick={() => onEnterRoom('central-plaza')} className="rounded-xl bg-[#17213d]/90 p-3 text-cyan-200 shadow-lg backdrop-blur hover:bg-[#24355e]"><Building2 size={18}/></button>
+        <button aria-label="Luna's Cafe" onClick={() => onEnterRoom('lunas-cafe')} className="rounded-xl bg-[#17213d]/90 p-3 text-amber-200 shadow-lg backdrop-blur hover:bg-[#24355e]"><Coffee size={18}/></button>
+        <button aria-label="Human Gallery" onClick={() => onEnterRoom('human-gallery')} className="rounded-xl bg-[#17213d]/90 p-3 text-pink-200 shadow-lg backdrop-blur hover:bg-[#24355e]"><GalleryVerticalEnd size={18}/></button>
+      </div>
+
+      {roomData && roomData.type === 'plaza' && <InWorldAd placementId="central-1" roomName={roomData.name} />}
 
       {/* Chat Overlay */}
       <div className="z-20 relative pointer-events-auto">

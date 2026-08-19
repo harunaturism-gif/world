@@ -64,3 +64,5 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+.hw-stars { background-image: radial-gradient(circle at 20% 20%, rgba(255,255,255,.9) 0 1px, transparent 2px), radial-gradient(circle at 70% 35%, rgba(112,214,255,.8) 0 1px, transparent 2px), radial-gradient(circle at 42% 74%, rgba(255,255,255,.7) 0 1px, transparent 2px); background-size: 170px 170px, 240px 240px, 310px 310px; opacity: .65; }

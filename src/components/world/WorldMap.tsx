@@ -1,7 +1,6 @@
-import { Users, Building2, ChevronRight, Plus } from 'lucide-react';
+import { Users, Building2, ChevronRight, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { RoomService, RoomData } from '../../services/RoomService';
-import { CreateSpace } from './CreateSpace';
 import { CurrentUser } from '../../App';
 
 interface WorldMapProps {
@@ -11,7 +10,6 @@ interface WorldMapProps {
 
 export function WorldMap({ onEnterRoom, currentUser }: WorldMapProps) {
   const [spaces, setSpaces] = useState<RoomData[]>([]);
-  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     loadRooms();
@@ -19,21 +17,8 @@ export function WorldMap({ onEnterRoom, currentUser }: WorldMapProps) {
 
   async function loadRooms() {
     const data = await RoomService.getRooms();
-    if (data.length === 0) {
-      setSpaces([
-        { id: 'central-plaza', name: 'Central Plaza', type: 'public', capacity: 50, owner_id: null, is_public: true, created_at: '', top: '40%', left: '50%' },
-        { id: 'neon-arcade', name: 'Neon Arcade', type: 'business', capacity: 50, owner_id: null, is_public: true, created_at: '', top: '25%', left: '30%' },
-        { id: 'lunas-cafe', name: "Luna's Cafe", type: 'player', capacity: 50, owner_id: null, is_public: true, created_at: '', top: '60%', left: '70%' },
-      ]);
-    } else {
-      setSpaces(data);
-    }
+    setSpaces(data);
   }
-
-  const handleRoomCreated = (roomId: string) => {
-    setShowCreate(false);
-    onEnterRoom(roomId);
-  };
 
   return (
     <div className="absolute inset-0 bg-zinc-950 overflow-hidden">
@@ -48,10 +33,10 @@ export function WorldMap({ onEnterRoom, currentUser }: WorldMapProps) {
       {/* Header Overlay */}
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none z-10">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Genesis District</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Human World</h1>
           <p className="text-zinc-400 text-sm flex items-center gap-1">
             <Users size={14} />
-            3,402 humans active
+            Local demo district
           </p>
         </div>
       </div>
@@ -70,9 +55,7 @@ export function WorldMap({ onEnterRoom, currentUser }: WorldMapProps) {
           {/* Node UI */}
           <div className="relative bg-zinc-900/90 border border-zinc-800 backdrop-blur-sm p-3 rounded-2xl shadow-xl flex items-center gap-3 group-hover:border-blue-500/50 transition-colors">
             <div className={`p-2 rounded-xl ${
-              space.type === 'public' ? 'bg-blue-500/20 text-blue-400' :
-              space.type === 'business' ? 'bg-purple-500/20 text-purple-400' :
-              'bg-emerald-500/20 text-emerald-400'
+              space.type === 'plaza' ? 'bg-blue-500/20 text-blue-400' : space.type === 'cafe' ? 'bg-amber-500/20 text-amber-300' : 'bg-fuchsia-500/20 text-fuchsia-300'
             }`}>
               <Building2 size={20} />
             </div>
@@ -88,24 +71,7 @@ export function WorldMap({ onEnterRoom, currentUser }: WorldMapProps) {
         </button>
       ))}
 
-      {/* Floating Create Space Button */}
-      {currentUser && (
-        <button
-          onClick={() => setShowCreate(true)}
-          className="absolute bottom-24 right-4 bg-white text-black w-14 h-14 rounded-full flex items-center justify-center shadow-lg shadow-white/10 hover:scale-105 active:scale-95 transition-all z-20"
-        >
-          <Plus size={24} />
-        </button>
-      )}
-
-      {/* Create Space Overlay */}
-      {showCreate && currentUser && (
-        <CreateSpace
-          currentUser={currentUser}
-          onClose={() => setShowCreate(false)}
-          onSuccess={handleRoomCreated}
-        />
-      )}
+      {currentUser && <button onClick={() => onEnterRoom('central-plaza')} className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-cyan-300 text-slate-950 px-5 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg"><Sparkles size={18}/> Enter Central Plaza</button>}
     </div>
   );
 }

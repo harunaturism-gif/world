@@ -1,329 +1,42 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import * as PIXI from 'pixi.js';
-import { AvatarService } from '../../services/AvatarService';
+import { AvatarService, AvatarState } from '../../services/AvatarService';
 
+interface Props { roomType?: string; onInteract: (message: string) => void; onOpenProfile?: (username: string) => void; onPresenceUpdate?: (count: number) => void; }
+const palette = { ink: 0x17213d, mint: 0x7ae7c7, cyan: 0x70d6ff, pink: 0xff70a6, gold: 0xffd166, cream: 0xfff5df, grass: 0x62c98d, brick: 0x664e9b };
 
-interface CentralPlazaEngineProps {
-  roomId?: string;
-  roomType?: string;
-  onInteract: (msg: string) => void;
-  onOpenProfile?: (username: string) => void;
-  onPresenceUpdate?: (count: number) => void;
-  onChatMessage?: (message: { id: number, author: string, text: string, isSystem: boolean }) => void;
-  outboundChatMessage?: string | null;
+function label(text: string, size = 13, color = 0xffffff) { const t = new PIXI.Text(text, { fontFamily: 'Arial', fontSize: size, fontWeight: 'bold', fill: color, dropShadow: true, dropShadowColor: 0x17213d, dropShadowDistance: 2 }); t.anchor.set(.5); return t; }
+function ellipse(g: PIXI.Graphics, x: number, y: number, rx: number, ry: number, color: number) { g.beginFill(color); g.drawEllipse(x, y, rx, ry); g.endFill(); }
+function avatar(state: AvatarState, name: string) {
+  const c = new PIXI.Container(); const g = new PIXI.Graphics();
+  ellipse(g, 0, 19, 17, 6, 0x16203b); g.beginFill(state.outfitColor); g.drawRoundedRect(-13, 0, 26, 31, 8); g.endFill();
+  g.beginFill(state.baseColor); g.drawCircle(0, -8, 14); g.endFill(); g.beginFill(state.hairColor); g.drawCircle(0, -12, 15); g.drawRect(-15, -12, 30, 10); g.endFill();
+  g.beginFill(state.accessoryColor); g.drawCircle(11, 1, 4); g.endFill(); c.addChild(g); const n = label(name); n.y = -33; c.addChild(n); return c;
 }
+function interactive(container: PIXI.Container, onClick: () => void) { container.eventMode = 'static'; container.cursor = 'pointer'; container.on('pointertap', (e) => { e.stopPropagation(); onClick(); }); container.on('pointerover', () => { container.scale.set(1.06); }); container.on('pointerout', () => { container.scale.set(1); }); }
 
-export function CentralPlazaEngine({ roomId, roomType, onInteract, onOpenProfile, onPresenceUpdate, onChatMessage, outboundChatMessage }: CentralPlazaEngineProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  console.log("Rendering room", roomId, roomType);
-  const interactRef = useRef(onInteract);
-  const openProfileRef = useRef(onOpenProfile);
-  const presenceRef = useRef(onPresenceUpdate);
-  const chatRef = useRef(onChatMessage);
-
-  const [fps, setFps] = useState(0);
-  const wsRef = useRef<WebSocket | null>(null);
-
+export function CentralPlazaEngine({ roomType = 'plaza', onInteract, onOpenProfile, onPresenceUpdate }: Props) {
+  const host = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && outboundChatMessage) {
-      wsRef.current.send(JSON.stringify({ type: 'chat', text: outboundChatMessage }));
-    }
-  }, [outboundChatMessage]);
-
-  // Always keep the latest callback without triggering effect re-runs
-  useEffect(() => {
-    interactRef.current = onInteract;
-  }, [onInteract]);
-
-  useEffect(() => {
-    openProfileRef.current = onOpenProfile;
-  }, [onOpenProfile]);
-
-  useEffect(() => {
-    presenceRef.current = onPresenceUpdate;
-  }, [onPresenceUpdate]);
-
-  useEffect(() => {
-    chatRef.current = onChatMessage;
-  }, [onChatMessage]);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    // Initialize PIXI Application
-    const app = new PIXI.Application({
-      width: containerRef.current.clientWidth,
-      height: containerRef.current.clientHeight,
-      backgroundColor: 0x09090b, // zinc-950
-      resolution: window.devicePixelRatio || 1,
-      autoDensity: true,
-      antialias: true
-    });
-
-    containerRef.current.appendChild(app.view as HTMLCanvasElement);
-
-    // Create a container to handle the Isometric transform
-    const isoContainer = new PIXI.Container();
-
-    // Center it
-    isoContainer.x = app.screen.width / 2;
-    isoContainer.y = app.screen.height / 2;
-
-    // Scale and skew to achieve roughly 2.5D isometric view
-    isoContainer.scale.y = 0.5;
-    isoContainer.rotation = Math.PI / 4;
-
-    app.stage.addChild(isoContainer);
-
-
-    const getColorForName = (name: string) => {
-      let hash = 0;
-      for (let i = 0; i < name.length; i++) {
-        hash = name.charCodeAt(i) + ((hash << 5) - hash);
-      }
-      const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
-      return parseInt("00000".substring(0, 6 - c.length) + c, 16);
-    };
-
-    // --- 1. Floor Generation ---
-    const floorSize = 800;
-    const floorGraphics = new PIXI.Graphics();
-
-    floorGraphics.beginFill(0x18181b); // zinc-900
-    floorGraphics.lineStyle(1, 0x27272a, 1); // zinc-800
-    floorGraphics.drawRect(-floorSize/2, -floorSize/2, floorSize, floorSize);
-    floorGraphics.endFill();
-
-    floorGraphics.lineStyle(1, 0x27272a, 0.5);
-    for(let i = -floorSize/2; i <= floorSize/2; i+=40) {
-      floorGraphics.moveTo(i, -floorSize/2);
-      floorGraphics.lineTo(i, floorSize/2);
-      floorGraphics.moveTo(-floorSize/2, i);
-      floorGraphics.lineTo(floorSize/2, i);
-    }
-    isoContainer.addChild(floorGraphics);
-
-    // Interactive floor for player movement
-    floorGraphics.interactive = true;
-
-    // Player Character
-    const player = new PIXI.Graphics();
-    const localAvatarState = AvatarService.getAvatar("dev-user-1");
-    player.beginFill(localAvatarState.baseColor);
-    player.drawCircle(0, 0, 15);
-    player.endFill();
-    player.x = 0;
-    player.y = 0;
-
-    const playerLabel = new PIXI.Text('You', {
-      fontFamily: 'sans-serif',
-      fontSize: 14,
-      fill: 0xffffff,
-      align: 'center'
-    });
-    playerLabel.rotation = -Math.PI / 4;
-    playerLabel.scale.y = 2.0;
-    playerLabel.anchor.set(0.5, 1.5);
-    player.addChild(playerLabel);
-
-    isoContainer.addChild(player);
-
-    let playerTargetX = 0;
-    let playerTargetY = 0;
-
-    floorGraphics.on('pointerdown', (e) => {
-      const localPos = e.data.getLocalPosition(isoContainer);
-      // Boundary check
-      const bound = floorSize/2 - 20;
-      playerTargetX = Math.max(-bound, Math.min(bound, localPos.x));
-      playerTargetY = Math.max(-bound, Math.min(bound, localPos.y));
-    });
-
-    // --- 2. Interactive Objects (Cafe, Bench, Arcade) ---
-    const createObject = (x: number, y: number, w: number, h: number, color: number, message: string) => {
-      const obj = new PIXI.Graphics();
-      obj.beginFill(color);
-      obj.lineStyle(1, 0xffffff, 0.2);
-      obj.drawRect(x, y, w, h);
-      obj.endFill();
-
-      obj.interactive = true;
-      obj.cursor = 'pointer';
-      obj.on('pointerdown', (e) => {
-        e.stopPropagation(); // prevent floor click
-        interactRef.current(message);
-        // Move player to object
-        playerTargetX = x + w/2;
-        playerTargetY = y + h + 20; // stand in front
-      });
-      isoContainer.addChild(obj);
-      return obj;
-    };
-
-
-    if (roomType === 'cafe') {
-      createObject(-100, -100, 200, 80, 0x1e3a8a, "You ordered a digital espresso.");
-      createObject(-150, 50, 40, 40, 0x475569, "You sit at a cafe table.");
-      createObject(100, 50, 40, 40, 0x475569, "You sit at a cafe table.");
-    } else if (roomType === 'arcade') {
-      createObject(-150, -150, 60, 60, 0x4c1d95, "You interact with the Neon Arcade machine. Loading mini-game...");
-      createObject(-50, -150, 60, 60, 0xbe185d, "Playing Dance Dance Virtual...");
-      createObject(50, -150, 60, 60, 0x4338ca, "Playing Space Invaders 3000...");
-    } else if (roomType === 'gallery') {
-      createObject(-200, -100, 20, 200, 0x7e22ce, "Viewing abstract digital art piece #1.");
-      createObject(180, -100, 20, 200, 0xbe123c, "Viewing abstract digital art piece #2.");
-    } else if (roomType === 'lounge') {
-      createObject(-100, -50, 200, 100, 0x065f46, "Relaxing on the lounge sofa.");
-    } else if (roomType === 'shop') {
-      createObject(-100, -150, 200, 60, 0xb45309, "Browsing digital goods at the shop counter.");
-      createObject(-100, 50, 60, 60, 0x475569, "Looking at a display rack.");
-    } else {
-      // Default Plaza
-      createObject(-200, -200, 160, 160, 0x1e3a8a, "You enter Luna's Cafe. The smell of digital espresso fills the air.");
-      createObject(100, 100, 80, 40, 0x064e3b, "You sit on the bench and watch the humans pass by.");
-      createObject(-50, 200, 80, 80, 0x4c1d95, "You interact with the Neon Arcade machine. Loading mini-game...");
-    }
-
-
-    // --- 3. Multiplayer Realtime Connection ---
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-    const remotePlayers = new Map<string, { graphics: PIXI.Graphics, targetX: number, targetY: number }>();
-
-    const updatePresence = () => {
-      presenceRef.current?.(remotePlayers.size + 1); // +1 for local player
-    };
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'join', roomId: roomId || 'central-plaza' }));
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.type === 'init') {
-        data.state.forEach((p: any) => {
-          if (p.id !== data.id && !remotePlayers.has(p.id)) {
-            spawnRemotePlayer(p.id, p.x, p.y, p.name);
-          }
-        });
-        updatePresence();
-      } else if (data.type === 'join') {
-        spawnRemotePlayer(data.id, data.x, data.y, data.name);
-        updatePresence();
-      } else if (data.type === 'leave') {
-        const rp = remotePlayers.get(data.id);
-        if (rp) {
-          isoContainer.removeChild(rp.graphics);
-          remotePlayers.delete(data.id);
-        }
-        updatePresence();
-      } else if (data.type === 'move') {
-        const rp = remotePlayers.get(data.id);
-        if (rp) {
-          rp.targetX = data.x;
-          rp.targetY = data.y;
-        }
-      } else if (data.type === 'chat') {
-        chatRef.current?.({
-          id: Date.now() + Math.random(),
-          author: data.name,
-          text: data.text,
-          isSystem: false
-        });
-      }
-    };
-
-    const spawnRemotePlayer = (id: string, x: number, y: number, name: string) => {
-      const rpGraphics = new PIXI.Graphics();
-      rpGraphics.beginFill(getColorForName(name));
-      rpGraphics.drawCircle(0, 0, 15);
-      rpGraphics.endFill();
-      rpGraphics.x = x;
-      rpGraphics.y = y;
-
-      rpGraphics.interactive = true;
-      rpGraphics.cursor = 'pointer';
-      rpGraphics.on('pointerdown', (e) => {
-        e.stopPropagation();
-        openProfileRef.current?.(name);
-      });
-
-      const label = new PIXI.Text(name, {
-        fontFamily: 'sans-serif',
-        fontSize: 14,
-        fill: 0xffffff,
-        align: 'center'
-      });
-      label.rotation = -Math.PI / 4;
-      label.scale.y = 2.0;
-      label.anchor.set(0.5, 1.5);
-      rpGraphics.addChild(label);
-
-      isoContainer.addChild(rpGraphics);
-      remotePlayers.set(id, { graphics: rpGraphics, targetX: x, targetY: y });
-    };
-
-    let lastFpsUpdate = 0;
-    let lastNetworkUpdate = 0;
-
-    // Main Game Loop
-    app.ticker.add((delta) => {
-      const now = performance.now();
-      if (now - lastFpsUpdate > 1000) {
-        setFps(Math.round(app.ticker.FPS));
-        lastFpsUpdate = now;
-      }
-
-      // Player Movement
-      const pdx = playerTargetX - player.x;
-      const pdy = playerTargetY - player.y;
-      const pdist = Math.sqrt(pdx*pdx + pdy*pdy);
-
-      let isMoving = false;
-      if (pdist > 5) {
-        player.x += (pdx / pdist) * 4 * delta;
-        player.y += (pdy / pdist) * 4 * delta;
-        isMoving = true;
-      }
-
-      // Broadcast local movement
-      if (isMoving && now - lastNetworkUpdate > 100 && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'move', x: player.x, y: player.y }));
-        lastNetworkUpdate = now;
-      }
-
-      // Camera Follows Player
-      isoContainer.x = app.screen.width / 2 - (player.x * Math.cos(Math.PI/4) - player.y * Math.sin(Math.PI/4));
-      isoContainer.y = app.screen.height / 2 - (player.x * Math.sin(Math.PI/4) + player.y * Math.cos(Math.PI/4)) * 0.5;
-
-      // Remote Player Movement Smoothing
-      remotePlayers.forEach(rp => {
-        const dx = rp.targetX - rp.graphics.x;
-        const dy = rp.targetY - rp.graphics.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-
-        if (dist > 2) {
-          rp.graphics.x += (dx / dist) * 4 * delta;
-          rp.graphics.y += (dy / dist) * 4 * delta;
-        }
-      });
-    });
-
-    // Cleanup
-    return () => {
-      ws.close();
-      app.destroy(true, { children: true });
-    };
-  }, [roomId, roomType]);
-
-  return (
-    <div className="relative w-full h-full">
-      <div ref={containerRef} className="absolute inset-0 touch-none" />
-      <div className="absolute top-2 left-2 bg-black/50 text-emerald-400 text-xs px-2 py-1 rounded font-mono z-50 pointer-events-none">
-        FPS: {fps} | Engine: PIXI.js WebGL (2.5D Mode)
-      </div>
-    </div>
-  );
+    if (!host.current) return;
+    const app = new PIXI.Application({ resizeTo: host.current, backgroundColor: palette.ink, antialias: true, resolution: Math.min(devicePixelRatio, 2), autoDensity: true }); host.current.appendChild(app.view as HTMLCanvasElement);
+    const world = new PIXI.Container(); app.stage.addChild(world); const floor = new PIXI.Graphics(); world.addChild(floor);
+    const drawFloor = () => { floor.clear(); floor.beginFill(roomType === 'cafe' ? 0x533b45 : roomType === 'gallery' ? 0x303d5e : 0x355d6e); floor.drawRoundedRect(-550, -390, 1100, 780, 48); floor.endFill(); floor.lineStyle(2, 0xffffff, .08); for (let x = -500; x < 550; x += 70) { floor.moveTo(x, -350); floor.lineTo(x, 350); } for (let y = -350; y < 360; y += 70) { floor.moveTo(-510, y); floor.lineTo(510, y); } };
+    drawFloor();
+    const addSign = (x: number, y: number, title: string, color: number, msg: string) => { const c = new PIXI.Container(); const g = new PIXI.Graphics(); g.beginFill(color); g.drawRoundedRect(-78, -28, 156, 56, 16); g.endFill(); g.lineStyle(2, 0xffffff, .25); g.drawRoundedRect(-78, -28, 156, 56, 16); c.addChild(g); const t = label(title, 15); c.addChild(t); c.x = x; c.y = y; interactive(c, () => onInteract(msg)); world.addChild(c); };
+    const plant = (x: number, y: number) => { const g = new PIXI.Graphics(); g.beginFill(0x3d8c78); g.drawCircle(x, y, 28); g.endFill(); g.beginFill(palette.grass); g.drawCircle(x - 12, y - 15, 18); g.drawCircle(x + 15, y - 12, 20); g.endFill(); world.addChild(g); };
+    const building = (x: number, y: number, w: number, h: number, color: number, title: string) => { const c = new PIXI.Container(); const g = new PIXI.Graphics(); g.beginFill(color); g.drawRoundedRect(-w / 2, -h / 2, w, h, 18); g.endFill(); g.beginFill(0xffffff, .18); for (let i = -w / 2 + 20; i < w / 2; i += 38) g.drawRoundedRect(i, -h / 2 + 18, 20, 24, 5); c.addChild(g); const t = label(title, 15, palette.cream); t.y = -h / 2 - 17; c.addChild(t); c.x = x; c.y = y; world.addChild(c); };
+    if (roomType === 'cafe') { building(0, -205, 500, 130, 0x9b5264, "LUNA'S CAFE"); addSign(0, -165, 'ORDER COFFEE', palette.gold, 'Fresh digital espresso, on the house.'); [-180, 0, 180].forEach((x) => { const g = new PIXI.Graphics(); g.beginFill(0x7a4a4a); g.drawCircle(x, 40, 42); g.endFill(); g.beginFill(palette.cream); g.drawCircle(x, 35, 15); g.endFill(); world.addChild(g); }); addSign(0, 210, 'PLAZA EXIT', palette.cyan, 'Head back to Central Plaza with the room switcher.'); }
+    else if (roomType === 'gallery') { building(0, -205, 540, 125, 0x4c5f9f, 'HUMAN GALLERY'); [-200, 0, 200].forEach((x, i) => { const c = new PIXI.Container(); const g = new PIXI.Graphics(); g.beginFill(0xf7f3ea); g.drawRoundedRect(-55, -65, 110, 130, 8); g.endFill(); g.beginFill([palette.pink, palette.cyan, palette.gold][i]); g.drawCircle(0, 0, 34); g.endFill(); c.addChild(g); c.x = x; c.y = 25; interactive(c, () => onInteract(`Exhibit ${i + 1}: a small story from a big human world.`)); world.addChild(c); }); addSign(0, 210, 'LEAVE A GLOW', palette.pink, 'You left a little glow for the artists.'); }
+    else { building(-310, -205, 240, 130, 0x6c579e, "MAYA'S STUDIO"); building(310, -205, 240, 130, 0x487b8e, "LUNA'S CAFE"); plant(-435, 135); plant(435, 135); const fountain = new PIXI.Graphics(); ellipse(fountain, 0, 20, 95, 50, 0x315d90); ellipse(fountain, 0, 8, 70, 32, palette.cyan); fountain.beginFill(0xffffff, .55); fountain.drawCircle(0, -22, 13); fountain.endFill(); world.addChild(fountain); addSign(0, 130, 'WISH FOUNTAIN', palette.pink, 'Your wish ripples across the plaza.'); addSign(-315, 100, 'COMMUNITY BOARD', palette.gold, 'Tonight: open mic at Luna’s Cafe.'); addSign(315, 100, 'CAFE DOOR', palette.cyan, 'Luna is pouring something warm.'); }
+    const player = avatar(AvatarService.getAvatar('dev-user-1'), 'You'); player.x = 0; player.y = 170; world.addChild(player);
+    const residents = [{ name: 'Alex', x: -145, y: 120, state: { baseColor: 0xc88161, hairColor: 0x1c253b, outfitColor: 0x4ecdc4, accessoryColor: 0xffd166, hair: 'short' as const } }, { name: 'Maya', x: 145, y: 155, state: { baseColor: 0x8c543b, hairColor: 0x332549, outfitColor: 0xff70a6, accessoryColor: 0x70d6ff, hair: 'wave' as const } }, { name: 'Leo', x: -230, y: -5, state: { baseColor: 0xe2ad82, hairColor: 0x54362b, outfitColor: 0xff9f43, accessoryColor: 0xffffff, hair: 'buzz' as const } }, { name: 'Sofia', x: 230, y: -5, state: { baseColor: 0xf2c3a8, hairColor: 0x26356e, outfitColor: 0x8b5cf6, accessoryColor: 0xffd166, hair: 'wave' as const } }];
+    residents.forEach((r) => { const a = avatar(r.state, r.name); a.x = r.x; a.y = r.y; interactive(a, () => onOpenProfile?.(r.name)); world.addChild(a); }); onPresenceUpdate?.(residents.length + 1);
+    let target = { x: player.x, y: player.y }; floor.eventMode = 'static'; floor.on('pointertap', (e) => { const p = e.getLocalPosition(world); target = { x: Math.max(-475, Math.min(475, p.x)), y: Math.max(-315, Math.min(315, p.y)) }; });
+    const keys = new Set<string>(); const down = (e: KeyboardEvent) => keys.add(e.key.toLowerCase()); const up = (e: KeyboardEvent) => keys.delete(e.key.toLowerCase()); addEventListener('keydown', down); addEventListener('keyup', up);
+    const resize = () => { world.x = app.screen.width / 2; world.y = app.screen.height / 2 + 18; const s = Math.min(app.screen.width / 1000, app.screen.height / 700, 1); world.scale.set(s); }; app.renderer.on('resize', resize); resize();
+    app.ticker.add(() => { const speed = 3.6; if (keys.has('arrowleft') || keys.has('a')) target.x -= speed; if (keys.has('arrowright') || keys.has('d')) target.x += speed; if (keys.has('arrowup') || keys.has('w')) target.y -= speed; if (keys.has('arrowdown') || keys.has('s')) target.y += speed; target.x = Math.max(-475, Math.min(475, target.x)); target.y = Math.max(-315, Math.min(315, target.y)); player.x += (target.x - player.x) * .12; player.y += (target.y - player.y) * .12; });
+    return () => { removeEventListener('keydown', down); removeEventListener('keyup', up); app.destroy(true, { children: true }); };
+  }, [roomType, onInteract, onOpenProfile, onPresenceUpdate]);
+  return <div className="relative h-full w-full"><div ref={host} className="absolute inset-0 touch-none"/><div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-slate-950/70 px-4 py-2 text-xs font-medium text-white/85 backdrop-blur pointer-events-none">Click to walk · Arrow keys / WASD · Tap residents and glowing objects</div></div>;
 }

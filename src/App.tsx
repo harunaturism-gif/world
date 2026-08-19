@@ -61,7 +61,7 @@ function App() {
       <main className="flex-1 relative overflow-hidden">
         {currentView === 'MAP' && <WorldMap onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
         {currentView === 'ROOM' && currentRoomId && (
-          <Room roomId={currentRoomId} onLeave={handleLeaveRoom} onOpenProfile={handleOpenProfile} />
+          <Room roomId={currentRoomId} onLeave={handleLeaveRoom} onEnterRoom={handleEnterRoom} onOpenProfile={handleOpenProfile} />
         )}
         {currentView === 'FEED' && <SocialFeed onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
         {currentView === 'DISCOVERY' && <Discovery onEnterRoom={handleEnterRoom} />}
