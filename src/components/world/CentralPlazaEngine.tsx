@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as PIXI from 'pixi.js';
 import { AvatarService, AvatarState } from '../../services/AvatarService';
+import { VisualPlazaPrototype } from '../../game/VisualPlazaPrototype';
 
 interface Props { roomType?: string; onInteract: (message: string) => void; onOpenProfile?: (username: string) => void; onPresenceUpdate?: (count: number) => void; }
 const palette = { ink: 0x17213d, mint: 0x7ae7c7, cyan: 0x70d6ff, pink: 0xff70a6, gold: 0xffd166, cream: 0xfff5df, grass: 0x62c98d, brick: 0x664e9b };
@@ -15,7 +16,12 @@ function avatar(state: AvatarState, name: string) {
 }
 function interactive(container: PIXI.Container, onClick: () => void) { container.eventMode = 'static'; container.cursor = 'pointer'; container.on('pointertap', (e) => { e.stopPropagation(); onClick(); }); container.on('pointerover', () => { container.scale.set(1.06); }); container.on('pointerout', () => { container.scale.set(1); }); }
 
-export function CentralPlazaEngine({ roomType = 'plaza', onInteract, onOpenProfile, onPresenceUpdate }: Props) {
+export function CentralPlazaEngine(props: Props) {
+  if (props.roomType === 'plaza' && new URLSearchParams(window.location.search).has('visual-prototype')) return <VisualPlazaPrototype onInteract={props.onInteract} onOpenProfile={props.onOpenProfile}/>;
+  return <PrimitiveCentralPlazaEngine {...props}/>;
+}
+
+function PrimitiveCentralPlazaEngine({ roomType = 'plaza', onInteract, onOpenProfile, onPresenceUpdate }: Props) {
   const host = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!host.current) return;
