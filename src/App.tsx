@@ -35,6 +35,12 @@ function App() {
     setCurrentView('ROOM');
   };
 
+  const handleEnterWorld = (user: Exclude<CurrentUser, null>) => {
+    setCurrentUser(user);
+    setCurrentRoomId('central-plaza');
+    setCurrentView('ROOM');
+  };
+
   const handleLeaveRoom = () => {
     setCurrentRoomId(null);
     setCurrentView('MAP');
@@ -51,7 +57,7 @@ function App() {
   };
 
   if (!currentUser) {
-    return <AuthOverlay onSuccess={setCurrentUser} />;
+    return <AuthOverlay onSuccess={handleEnterWorld} />;
   }
 
   return (

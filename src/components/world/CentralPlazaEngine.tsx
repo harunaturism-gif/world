@@ -18,7 +18,7 @@ function avatar(state: AvatarState, name: string) {
 function interactive(container: PIXI.Container, onClick: () => void) { container.eventMode = 'static'; container.cursor = 'pointer'; container.on('pointertap', (e) => { e.stopPropagation(); onClick(); }); container.on('pointerover', () => { container.scale.set(1.06); }); container.on('pointerout', () => { container.scale.set(1); }); }
 
 export function CentralPlazaEngine(props: Props) {
-  if (props.roomType === 'plaza' && new URLSearchParams(window.location.search).has('visual-prototype')) return <VisualPlazaPrototype onInteract={props.onInteract} onEnterRoom={props.onEnterRoom} onOpenProfile={props.onOpenProfile} onPresenceUpdate={props.onPresenceUpdate} playerSpeech={props.playerSpeech}/>;
+  if (props.roomType === 'plaza') return <VisualPlazaPrototype onInteract={props.onInteract} onEnterRoom={props.onEnterRoom} onOpenProfile={props.onOpenProfile} onPresenceUpdate={props.onPresenceUpdate} playerSpeech={props.playerSpeech}/>;
   return <PrimitiveCentralPlazaEngine {...props}/>;
 }
 
