@@ -13,6 +13,8 @@
   "dependencies": {
     "@pixi/react": "^7.1.2",
     "@supabase/supabase-js": "^2.112.3",
+    "@worldcoin/idkit": "^4.2.2",
+    "@worldcoin/idkit-core": "^4.2.3",
     "@worldcoin/minikit-js": "^2.0.3",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.344.0",

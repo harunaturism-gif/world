@@ -6,33 +6,91 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 import jwt from 'jsonwebtoken';
+import { signRequest } from '@worldcoin/idkit-core/signing';
 app.use(express.json());
+// RP Signature for IDKit initialization
+app.post('/api/auth/rp-signature', async (req, res) => {
+    try {
+        const { action } = req.body;
+        // In dev mode, if the RP_SIGNING_KEY is not available, return a mock
+        if (!process.env.WORLD_RP_SIGNING_KEY) {
+            console.log("Returning mock RP signature (Missing WORLD_RP_SIGNING_KEY)");
+            return res.json({
+                sig: "mock_sig",
+                nonce: "mock_nonce",
+                created_at: Math.floor(Date.now() / 1000),
+                expires_at: Math.floor(Date.now() / 1000) + 3600
+            });
+        }
+        const { sig, nonce, createdAt, expiresAt } = signRequest({
+            signingKeyHex: process.env.WORLD_RP_SIGNING_KEY,
+            action: action || "human-world-login",
+        });
+        return res.json({
+            sig,
+            nonce,
+            created_at: createdAt,
+            expires_at: expiresAt,
+        });
+    }
+    catch (error) {
+        console.error("RP Sign error", error);
+        return res.status(500).json({ error: "Failed to sign request" });
+    }
+});
 // Auth Bridge: World ID -> Supabase JWT
 app.post('/api/auth/verify', async (req, res) => {
-    const { proof, nullifier_hash } = req.body;
+    const { proof } = req.body;
     if (!proof) {
         return res.status(400).json({ error: 'Missing proof' });
     }
-    // 1. In a real app, verify the proof against the World ID API here.
-    // We mock a successful verification for now since we don't have the App ID configured.
-    const isValid = true;
-    if (isValid) {
-        // 2. We use the nullifier_hash as the stable internal identity (canonical user ID)
-        const userId = nullifier_hash || crypto.randomUUID();
-        // 3. Sign a JWT that Supabase RLS will accept.
-        // Must match VITE_SUPABASE_JWT_SECRET in production
+    const rp_id = process.env.WORLD_RP_ID || "app_mock_rp_id";
+    let isValid = false;
+    let nullifier = null;
+    // Development bypass if explicitly configured or missing real credentials
+    if (process.env.NODE_ENV !== 'production' && (!process.env.WORLD_RP_ID || process.env.ENABLE_DEV_BYPASS === 'true')) {
+        console.log("Using Development Authentication Bypass");
+        isValid = true;
+        nullifier = `dev_nullifier_${crypto.randomUUID().substring(0, 8)}`;
+    }
+    else {
+        // Production Real Verification
+        try {
+            const response = await fetch(`https://developer.world.org/api/v4/verify/${rp_id}`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(proof),
+            });
+            if (response.ok) {
+                const verifyData = await response.json();
+                isValid = true;
+                if (proof.responses && proof.responses.length > 0) {
+                    nullifier = proof.responses[0].nullifier || proof.responses[0].session_nullifier?.[0];
+                }
+            }
+            else {
+                const err = await response.text();
+                console.error("World ID verification failed:", err);
+            }
+        }
+        catch (error) {
+            console.error("World ID API connection error:", error);
+        }
+    }
+    if (isValid && nullifier) {
+        const userId = nullifier.toString();
         const supabaseJwtSecret = process.env.SUPABASE_JWT_SECRET || 'super-secret-mock-jwt-key-for-local-dev-only-12345';
         const payload = {
             aud: 'authenticated',
-            exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24), // 1 day
+            exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24),
             sub: userId,
             role: 'authenticated'
         };
         const token = jwt.sign(payload, supabaseJwtSecret);
-        return res.json({ token, user: { id: userId, username: `Human_${userId.substring(0, 6)}` } });
+        return res.json({ token, user: { id: userId, username: `Human_${userId.substring(userId.length > 6 ? userId.length - 6 : 0).toUpperCase()}` } });
     }
     else {
-        return res.status(401).json({ error: 'Invalid proof' });
+        return res.status(401).json({ error: 'Invalid proof or missing nullifier' });
     }
 });
 const rooms = new Map();
