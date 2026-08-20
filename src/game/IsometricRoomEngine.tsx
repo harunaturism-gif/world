@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import * as PIXI from 'pixi.js';
 import { AvatarAnimationController } from './AvatarAnimationController';
 import { AvatarRenderer } from './AvatarRenderer';
+import { renderBorders } from './BorderRenderer';
 import { CameraController } from './CameraController';
 import { renderFloor } from './FloorRenderer';
-import { intersects, isoToScreen, type IsoPoint, screenToIso } from './isometric';
+import { isoDepth, isoToScreen, type IsoPoint, screenToIso } from './isometric';
 import { MovementController, type MovementFrame } from './MovementController';
 import { findPath } from './pathfinding';
+import { RoomGeometry } from './RoomGeometry';
 import type { PlayerSpeech, RoomAvatarDefinition, RoomDefinition, RoomSelection } from './roomEngine';
 import { worldAssets } from './worldManifest';
 
@@ -87,6 +89,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
     const keys = new Set<string>();
     const footsteps: Footstep[] = [];
     const camera = new CameraController();
+    const geometry = new RoomGeometry(room.geometry);
     let disposed = false;
     let player: Actor;
 
@@ -100,7 +103,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
     addEventListener('keyup', keyUp);
 
     void (async () => {
-      const floorAssets = [...room.floor.assets, ...room.floor.pathAssets, room.floor.boundaryAsset];
+      const floorAssets = Object.values(room.floor.materials).flat();
       const avatarAssets = room.avatars.flatMap((avatar) => avatar.appearance.layers.map((layer) => layer.asset));
       const urls = Array.from(new Set([...floorAssets, worldAssets.avatarShadow, ...avatarAssets, ...room.objects.map((object) => object.asset)]));
       const textureEntries = await Promise.all(urls.map(async (url) => [url, await PIXI.Assets.load<PIXI.Texture>(url)] as const));
@@ -109,20 +112,22 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       const textureFor = (url: string) => textures.get(url) ?? PIXI.Texture.EMPTY;
       onPresenceUpdate?.(room.avatars.length);
 
-      renderFloor(scene, room, textureFor);
+      renderFloor(scene, room, geometry, textureFor);
+      renderBorders(scene, geometry);
 
       const tileCursor = new PIXI.Graphics();
       tileCursor.visible = false;
       scene.addChild(tileCursor);
       const drawTileCursor = (point: IsoPoint, occupied: boolean) => {
-        const screen = isoToScreen(point);
+        const world = geometry.worldPoint(point);
+        const screen = isoToScreen(world);
         tileCursor.clear();
         tileCursor.lineStyle(2, occupied ? 0xef7188 : 0xffe39a, 0.9);
         tileCursor.beginFill(occupied ? 0xef5472 : 0xffd166, occupied ? 0.08 : 0.1);
         tileCursor.drawPolygon([0, -16, 32, 0, 0, 16, -32, 0]);
         tileCursor.endFill();
         tileCursor.position.set(screen.x, screen.y);
-        tileCursor.zIndex = screen.y - 2;
+        tileCursor.zIndex = isoDepth(world) - 2;
         tileCursor.visible = true;
       };
 
@@ -134,16 +139,17 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       selectionRing.visible = false;
       scene.addChild(selectionRing);
       const placeSelectionRing = (point: IsoPoint) => {
-        const screen = isoToScreen(point);
+        const world = geometry.worldPoint(point);
+        const screen = isoToScreen(world);
         selectionRing.position.set(screen.x, screen.y + 2);
-        selectionRing.zIndex = screen.y - 1;
+        selectionRing.zIndex = isoDepth(world) - 1;
         selectionRing.visible = true;
       };
 
-      const insideFloor = (point: IsoPoint) => point.x >= room.floor.minX + 0.35 && point.x <= room.floor.maxX - 0.35 && point.y >= room.floor.minY + 0.35 && point.y <= room.floor.maxY - 0.35;
-      const blocked = (point: IsoPoint) => !insideFloor(point) || room.objects.some((object) => object.collision && intersects(point, object.collision, 0.16));
+      const insideFloor = (point: IsoPoint) => Boolean(geometry.cellAt(point));
+      const blocked = (point: IsoPoint) => geometry.isBlocked(point, room.objects);
       const routeActor = (actor: Actor, target: IsoPoint) => {
-        const path = findPath(actor.movement.position, snapToTile(target), blocked);
+        const path = findPath(actor.movement.position, snapToTile(target), blocked, (from, to) => geometry.canTraverse(from, to, room.objects));
         actor.movement.setPath(path);
         return path.length > 0;
       };
@@ -152,13 +158,14 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       room.objects.forEach((definition, index) => {
         const node = new PIXI.Container();
         const sprite = new PIXI.Sprite(textureFor(definition.asset));
-        const screen = isoToScreen(definition.position);
+        const world = geometry.worldPoint(definition.position);
+        const screen = isoToScreen(world);
         sprite.anchor.set(0.5, 1);
         sprite.width = definition.displayWidth;
         sprite.scale.y = sprite.scale.x;
         node.addChild(sprite);
         node.position.set(screen.x, screen.y);
-        node.zIndex = screen.y + (definition.depthBias ?? 0);
+        node.zIndex = isoDepth(world) + (definition.depthBias ?? 0);
         node.name = definition.id;
 
         if (definition.interaction) {
@@ -218,7 +225,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       };
 
       const makeActor = (definition: RoomAvatarDefinition, index: number): Actor => {
-        const position = definition.player ? room.spawn : definition.position;
+        const position = definition.player ? geometry.spawn : definition.position;
         const node = new PIXI.Container();
         const shadow = new PIXI.Sprite(textureFor(worldAssets.avatarShadow));
         const visual = new AvatarRenderer(definition.appearance, textureFor);
@@ -283,21 +290,23 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       player = actors.find((_, index) => room.avatars[index].player) ?? actors[0];
       const residents = actors.filter((actor) => actor !== player);
       const placeActor = (actor: Actor) => {
-        const screen = isoToScreen(actor.movement.position);
+        const world = geometry.worldPoint(actor.movement.position);
+        const screen = isoToScreen(world);
         actor.node.position.set(screen.x, screen.y);
-        actor.node.zIndex = screen.y + 1;
+        actor.node.zIndex = isoDepth(world) + 1;
       };
       actors.forEach(placeActor);
       runtime.current = { say: (text) => showSpeech(player, text) };
 
       const spawnFootstep = (position: IsoPoint) => {
-        const screen = isoToScreen(position);
+        const world = geometry.worldPoint(position);
+        const screen = isoToScreen(world);
         const graphic = new PIXI.Graphics();
         graphic.beginFill(0x233f4a, 0.16);
         graphic.drawEllipse(0, 0, 9, 3);
         graphic.endFill();
         graphic.position.set(screen.x, screen.y);
-        graphic.zIndex = screen.y - 3;
+        graphic.zIndex = isoDepth(world) - 3;
         scene.addChild(graphic);
         footsteps.push({ graphic, life: 1 });
       };
@@ -318,7 +327,15 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       };
 
       scene.eventMode = 'static';
-      scene.hitArea = new PIXI.Rectangle(-950, -460, 1900, 980);
+      const floorBounds = geometry.projectedFloorBounds();
+      const visualBounds = scene.getLocalBounds();
+      const minX = Math.min(floorBounds.x, visualBounds.x) - 36;
+      const minY = Math.min(floorBounds.y, visualBounds.y) - 30;
+      const maxX = Math.max(floorBounds.x + floorBounds.width, visualBounds.x + visualBounds.width) + 36;
+      const maxY = Math.max(floorBounds.y + floorBounds.height, visualBounds.y + visualBounds.height) + 30;
+      const roomBounds = new PIXI.Rectangle(minX, minY, maxX - minX, maxY - minY);
+      camera.configure(roomBounds, geometry.spawn);
+      scene.hitArea = new PIXI.Rectangle(roomBounds.x - 100, roomBounds.y - 100, roomBounds.width + 200, roomBounds.height + 200);
       scene.on('pointermove', (event) => {
         const target = snapToTile(screenToIso(event.getLocalPosition(scene)));
         if (!insideFloor(target)) { tileCursor.visible = false; return; }
@@ -335,7 +352,8 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         }
       });
 
-      const layout = (immediate = false) => camera.layout(scene, app.screen, player.movement.position, immediate);
+      let playerMoving = false;
+      const layout = (immediate = false) => camera.layout(scene, app.screen, geometry.worldPoint(player.movement.position), playerMoving, immediate);
       const onResize = () => layout(true);
       app.renderer.on('resize', onResize);
       layout(true);
@@ -354,6 +372,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         const playerFrame = dx || dy
           ? player.movement.moveDirect({ x: dx, y: dy }, blocked)
           : player.movement.update(deltaSeconds, blocked);
+        playerMoving = playerFrame.moving;
         updateActorVisual(player, playerFrame, deltaMs, true);
 
         residents.forEach((actor, index) => {

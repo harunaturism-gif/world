@@ -43,6 +43,47 @@ export interface RoomAvatarDefinition {
   patrol?: IsoPoint[];
 }
 
+export type RoomMaterial = 'stone' | 'path' | 'garden' | 'platform';
+export type RoomBorderKind = 'curb' | 'fence' | 'wall';
+
+export interface RoomCellDefinition {
+  x: number;
+  y: number;
+  elevation: number;
+  material: RoomMaterial;
+  walkable: boolean;
+}
+
+export interface RoomWallDefinition {
+  id: string;
+  from: IsoPoint;
+  to: IsoPoint;
+  kind: RoomBorderKind;
+  height: number;
+  thickness?: number;
+  blocksMovement?: boolean;
+  color?: number;
+}
+
+export interface RoomExitDefinition {
+  id: string;
+  position: IsoPoint;
+  targetRoomId: string;
+  label: string;
+}
+
+export interface RoomGeometryDefinition {
+  cells: RoomCellDefinition[];
+  walls: RoomWallDefinition[];
+  exits: RoomExitDefinition[];
+  spawn: IsoPoint;
+  maxStepHeight: number;
+}
+
+export interface RoomFloorDefinition {
+  materials: Record<RoomMaterial, string[]>;
+}
+
 export interface PlayerSpeech {
   id: number;
   text: string;
@@ -51,10 +92,10 @@ export interface PlayerSpeech {
 export interface RoomDefinition {
   id: string;
   name: string;
-  floor: { assets: string[]; pathAssets: string[]; boundaryAsset: string; minX: number; maxX: number; minY: number; maxY: number };
+  geometry: RoomGeometryDefinition;
+  floor: RoomFloorDefinition;
   objects: RoomObjectDefinition[];
   avatars: RoomAvatarDefinition[];
-  spawn: IsoPoint;
   ui: { subtitle: string; help: string };
 }
 

@@ -52,7 +52,12 @@ function simplify(path: IsoPoint[]) {
 }
 
 /** Lightweight A* over the room's hidden half-tile navigation grid. */
-export function findPath(start: IsoPoint, requestedGoal: IsoPoint, isBlocked: (point: IsoPoint) => boolean): IsoPoint[] {
+export function findPath(
+  start: IsoPoint,
+  requestedGoal: IsoPoint,
+  isBlocked: (point: IsoPoint) => boolean,
+  canTraverse: (from: IsoPoint, to: IsoPoint) => boolean = (_, to) => !isBlocked(to),
+): IsoPoint[] {
   const startGrid = toGrid(start);
   const goalGrid = nearestWalkable(toGrid(requestedGoal), isBlocked);
   if (!goalGrid) return [];
@@ -96,7 +101,7 @@ export function findPath(start: IsoPoint, requestedGoal: IsoPoint, isBlocked: (p
     for (const direction of directions) {
       const candidate = { x: current.x + direction.x, y: current.y + direction.y };
       const candidateKey = keyOf(candidate);
-      if (closed.has(candidateKey) || isBlocked(toWorld(candidate))) continue;
+      if (closed.has(candidateKey) || !canTraverse(toWorld(current), toWorld(candidate))) continue;
       if (direction.x !== 0 && direction.y !== 0) {
         const horizontal = toWorld({ x: current.x + direction.x, y: current.y });
         const vertical = toWorld({ x: current.x, y: current.y + direction.y });
