@@ -20,6 +20,7 @@ export interface RoomObjectDefinition {
   displayWidth: number;
   collision?: CollisionShape;
   interaction?: RoomInteraction;
+  interactionPoint?: IsoPoint;
   depthBias?: number;
   ambient?: 'glow' | 'float';
 }
@@ -28,8 +29,14 @@ export interface RoomAvatarDefinition {
   id: string;
   name: string;
   position: IsoPoint;
-  tint: number;
+  palette: { skin: number; hair: number; outfit: number; accessory: number };
   player?: boolean;
+  patrol?: IsoPoint[];
+}
+
+export interface PlayerSpeech {
+  id: number;
+  text: string;
 }
 
 export interface RoomDefinition {

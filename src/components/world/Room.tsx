@@ -5,6 +5,7 @@ import { CentralPlazaEngine } from './CentralPlazaEngine';
 import { RoomService, RoomData } from '../../services/RoomService';
 import { PropertyInspector } from './PropertyInspector';
 import { InWorldAd } from './InWorldAd';
+import type { PlayerSpeech } from '../../game/roomEngine';
 
 export interface ChatMessage {
   id: number;
@@ -27,6 +28,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
   const [roomData, setRoomData] = useState<RoomData | null>(null);
   const [showInspector, setShowInspector] = useState(false);
   const [isDisconnected, setIsDisconnected] = useState(false);
+  const [playerSpeech, setPlayerSpeech] = useState<PlayerSpeech | null>(null);
 
 
 
@@ -45,7 +47,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
     setPresenceCount(count);
   }, []);
 
-  const handleSendChat = useCallback((text: string) => { setToast(`You said: ${text}`); setTimeout(() => setToast(null), 3000); }, []);
+  const handleSendChat = useCallback((text: string) => { setPlayerSpeech({ id: Date.now(), text }); setToast(`You said: ${text}`); setTimeout(() => setToast(null), 3000); }, []);
 
   return (
     <div className="absolute inset-0 bg-zinc-950 flex flex-col">
@@ -84,6 +86,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
           onEnterRoom={onEnterRoom}
           onOpenProfile={onOpenProfile}
           onPresenceUpdate={handlePresenceUpdate}
+          playerSpeech={playerSpeech}
         />
 
         {/* Interaction Toast Overlay */}
