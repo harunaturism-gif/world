@@ -1,8 +1,10 @@
 import type { RoomDefinition } from './roomEngine';
 
 export const worldAssets = {
-  ground: '/assets/world/ground/plaza-tile.svg',
-  curb: '/assets/world/ground/curb-edge.svg',
+  ground: '/assets/world/ground/plaza-stone-a.svg',
+  groundVariant: '/assets/world/ground/plaza-stone-b.svg',
+  path: '/assets/world/ground/plaza-path.svg',
+  curb: '/assets/world/ground/curb-natural.svg',
   cafe: '/assets/world/buildings/cafe.png',
   stall: '/assets/world/props/market-stall.png',
   tree: '/assets/world/vegetation/tree.png',
@@ -14,16 +16,20 @@ export const worldAssets = {
   table: '/assets/world/props/table.svg',
   chair: '/assets/world/props/chair.svg',
   avatarShadow: '/assets/world/characters/avatar-shadow.svg',
-  avatarBody: '/assets/world/characters/avatar-body.svg',
-  avatarSkin: '/assets/world/characters/avatar-skin.svg',
-  avatarHair: '/assets/world/characters/avatar-hair.svg',
-  avatarAccessory: '/assets/world/characters/avatar-accessory.svg',
+  avatarAtlas: '/assets/world/characters/human-world-avatar-atlas.png',
 } as const;
+
+const socialAvatar = {
+  frameColumns: 4,
+  frameRows: 4,
+  renderWidth: 116,
+  layers: [{ slot: 'body' as const, asset: worldAssets.avatarAtlas }],
+};
 
 export const centralPlazaRoom: RoomDefinition = {
   id: 'central-plaza',
   name: 'Central Plaza',
-  floor: { asset: worldAssets.ground, boundaryAsset: worldAssets.curb, minX: -6, maxX: 6, minY: -5, maxY: 5 },
+  floor: { assets: [worldAssets.ground, worldAssets.groundVariant], pathAssets: [worldAssets.path], boundaryAsset: worldAssets.curb, minX: -6, maxX: 6, minY: -5, maxY: 5 },
   spawn: { x: 1.2, y: 4.25 },
   ui: { subtitle: 'Social district · 3 residents online', help: 'Click to move · WASD / arrows · tap glowing objects or residents' },
   objects: [
@@ -41,9 +47,9 @@ export const centralPlazaRoom: RoomDefinition = {
     { id: 'cafe-chair', asset: worldAssets.chair, category: 'furniture', position: { x: -.65, y: 1.35 }, displayWidth: 48, collision: { kind: 'circle', x: -.65, y: 1.35, radius: .3 } },
   ],
   avatars: [
-    { id: 'player', name: 'You', position: { x: 1.2, y: 4.25 }, palette: { skin: 0xf2b78d, hair: 0x273250, outfit: 0x4c83d8, accessory: 0xffd166 }, player: true },
-    { id: 'alex', name: 'Alex', position: { x: -1.8, y: 1.6 }, palette: { skin: 0xc9825b, hair: 0x38261f, outfit: 0x43b995, accessory: 0xffc857 }, patrol: [{ x: -1.8, y: 1.6 }, { x: -2.45, y: 1.05 }] },
-    { id: 'maya', name: 'Maya', position: { x: 2.15, y: 2.1 }, palette: { skin: 0xdda179, hair: 0x612b3d, outfit: 0xe9658b, accessory: 0x76e8c8 }, patrol: [{ x: 2.15, y: 2.1 }, { x: 2.65, y: 2.7 }] },
-    { id: 'sofia', name: 'Sofia', position: { x: 1.5, y: -1 }, palette: { skin: 0xf0bd93, hair: 0x2f244a, outfit: 0x8f76d6, accessory: 0xffd166 }, patrol: [{ x: 1.5, y: -1 }, { x: 1.85, y: -.55 }] },
+    { id: 'player', name: 'You', position: { x: 1.2, y: 4.25 }, palette: { skin: 0xf2b78d, hair: 0x273250, outfit: 0x4c83d8, accessory: 0xffd166 }, appearance: socialAvatar, player: true },
+    { id: 'alex', name: 'Alex', position: { x: -1.8, y: 1.6 }, palette: { skin: 0xc9825b, hair: 0x38261f, outfit: 0x43b995, accessory: 0xffc857 }, appearance: socialAvatar, patrol: [{ x: -1.8, y: 1.6 }, { x: -2.45, y: 1.05 }] },
+    { id: 'maya', name: 'Maya', position: { x: 2.15, y: 2.1 }, palette: { skin: 0xdda179, hair: 0x612b3d, outfit: 0xe9658b, accessory: 0x76e8c8 }, appearance: socialAvatar, patrol: [{ x: 2.15, y: 2.1 }, { x: 2.65, y: 2.7 }] },
+    { id: 'sofia', name: 'Sofia', position: { x: 1.5, y: -1 }, palette: { skin: 0xf0bd93, hair: 0x2f244a, outfit: 0x8f76d6, accessory: 0xffd166 }, appearance: socialAvatar, patrol: [{ x: 1.5, y: -1 }, { x: 1.85, y: -.55 }] },
   ],
 };
