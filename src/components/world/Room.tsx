@@ -81,6 +81,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
         <CentralPlazaEngine
           roomType={roomData?.type}
           onInteract={handleInteract}
+          onEnterRoom={onEnterRoom}
           onOpenProfile={onOpenProfile}
           onPresenceUpdate={handlePresenceUpdate}
         />
@@ -105,10 +106,10 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
         <button aria-label="Human Gallery" onClick={() => onEnterRoom('human-gallery')} className="rounded-xl bg-[#17213d]/90 p-3 text-pink-200 shadow-lg backdrop-blur hover:bg-[#24355e]"><GalleryVerticalEnd size={18}/></button>
       </div>
 
-      {roomData && roomData.type === 'plaza' && <InWorldAd placementId="central-1" roomName={roomData.name} />}
+      {roomData && roomData.type === 'plaza' && <div className="hidden md:block"><InWorldAd placementId="central-1" roomName={roomData.name} /></div>}
 
       {/* Chat Overlay */}
-      <div className="z-20 relative pointer-events-auto">
+      <div className="absolute bottom-0 left-0 right-0 z-20 max-h-20 overflow-hidden pointer-events-auto [&>div]:h-20">
         <Chat onSendMessage={handleSendChat} incomingMessage={incomingMessage} />
       </div>
 

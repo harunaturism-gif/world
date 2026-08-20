@@ -8,4 +8,5 @@
   <circle cx="54" cy="51" r="3.5" fill="#15233d"/><circle cx="75" cy="51" r="3.5" fill="#15233d"/>
   <path d="M57 64c5 4 10 4 15 0" fill="none" stroke="#bc5a61" stroke-width="3" stroke-linecap="round"/>
   <path d="M44 91h40" stroke="#fff" stroke-opacity=".35" stroke-width="5" stroke-linecap="round"/>
+  <path d="m79 84 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1Z" fill="#ffd166" stroke="#15233d" stroke-width="2"/>
 </svg>
