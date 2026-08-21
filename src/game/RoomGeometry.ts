@@ -1,5 +1,6 @@
 import { intersects, isoToScreen, type IsoPoint } from './isometric';
 import type { RoomCellDefinition, RoomGeometryDefinition, RoomObjectDefinition, RoomWallDefinition } from './roomEngine';
+import { OpenHotelRoomModel } from './openHotel/RoomModel';
 
 const cellKey = (x: number, y: number) => `${x},${y}`;
 
@@ -13,9 +14,11 @@ function distanceToSegment(point: IsoPoint, wall: RoomWallDefinition) {
 
 export class RoomGeometry {
   private readonly cells = new Map<string, RoomCellDefinition>();
+  readonly roomModel: OpenHotelRoomModel;
 
   constructor(readonly definition: RoomGeometryDefinition) {
     definition.cells.forEach((cell) => this.cells.set(cellKey(cell.x, cell.y), cell));
+    this.roomModel = OpenHotelRoomModel.fromCells(definition.cells, definition.spawn);
   }
 
   get allCells() { return this.definition.cells; }
@@ -23,7 +26,7 @@ export class RoomGeometry {
   get spawn() { return this.definition.spawn; }
 
   cellAt(point: IsoPoint) {
-    return this.cells.get(cellKey(Math.round(point.x), Math.round(point.y)));
+    return this.roomModel.cellAt(point.x, point.y);
   }
 
   cellAtCoordinates(x: number, y: number) {

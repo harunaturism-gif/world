@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import * as PIXI from 'pixi.js';
-import { AvatarAnimationController } from './AvatarAnimationController';
 import { AvatarRenderer } from './AvatarRenderer';
 import { renderBorders } from './BorderRenderer';
 import { CameraController } from './CameraController';
 import { renderFloor } from './FloorRenderer';
-import { isoDepth, isoToScreen, type IsoPoint, screenToIso } from './isometric';
-import { MovementController, type MovementFrame } from './MovementController';
-import { findPath } from './pathfinding';
+import { isoDepth, isoToScreen, type IsoPoint, screenToIso, TILE_HEIGHT, TILE_WIDTH } from './isometric';
+import { RoomEngineCore } from './openHotel/RoomEngineCore';
+import type { RoomUserFrame } from './openHotel/RoomUser';
+import type { RoomUser } from './openHotel/RoomUser';
 import { RoomGeometry } from './RoomGeometry';
 import type { PlayerSpeech, RoomAvatarDefinition, RoomDefinition, RoomSelection } from './roomEngine';
 import { worldAssets } from './worldManifest';
@@ -26,8 +26,7 @@ interface Actor {
   node: PIXI.Container;
   visual: AvatarRenderer;
   shadow: PIXI.Sprite;
-  movement: MovementController;
-  animation: AvatarAnimationController;
+  user: RoomUser;
   patrol: IsoPoint[];
   waypointIndex: number;
   nextMoveAt: number;
@@ -52,7 +51,7 @@ interface AnimatedObject {
 
 interface Footstep { graphic: PIXI.Graphics; life: number }
 interface AmbientParticle { graphic: PIXI.Graphics; baseY: number; phase: number }
-interface SceneRuntime { say: (text: string) => void }
+interface SceneRuntime { say: (text: string) => void; zoomBy: (amount: number) => void; recenter: () => void }
 
 const snapToTile = (point: IsoPoint): IsoPoint => ({ x: Math.round(point.x * 2) / 2, y: Math.round(point.y * 2) / 2 });
 
@@ -120,7 +119,13 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
     const ambientParticles: AmbientParticle[] = [];
     const camera = new CameraController();
     const geometry = new RoomGeometry(room.geometry);
+    const core = new RoomEngineCore(room.id, {
+      staticBlocked: (point) => geometry.isBlocked(point, room.objects),
+      canTraverse: (from, to) => geometry.canTraverse(from, to, room.objects),
+      elevationAt: (point) => geometry.elevationAt(point),
+    });
     let disposed = false;
+    let removeWheel = () => {};
     let player: Actor;
 
     const keyDown = (event: KeyboardEvent) => {
@@ -155,7 +160,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         tileCursor.clear();
         tileCursor.lineStyle(2, occupied ? 0xef7188 : 0xffe39a, 0.9);
         tileCursor.beginFill(occupied ? 0xef5472 : 0xffd166, occupied ? 0.08 : 0.1);
-        tileCursor.drawPolygon([0, -16, 32, 0, 0, 16, -32, 0]);
+        tileCursor.drawPolygon([0, -TILE_HEIGHT / 4, TILE_WIDTH / 4, 0, 0, TILE_HEIGHT / 4, -TILE_WIDTH / 4, 0]);
         tileCursor.endFill();
         tileCursor.position.set(screen.x, screen.y);
         tileCursor.zIndex = isoDepth(world) - 2;
@@ -180,9 +185,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       const insideFloor = (point: IsoPoint) => Boolean(geometry.cellAt(point));
       const blocked = (point: IsoPoint) => geometry.isBlocked(point, room.objects);
       const routeActor = (actor: Actor, target: IsoPoint) => {
-        const path = findPath(actor.movement.position, snapToTile(target), blocked, (from, to) => geometry.canTraverse(from, to, room.objects));
-        actor.movement.setPath(path);
-        return path.length > 0;
+        return core.routeUser(actor.id, snapToTile(target), true);
       };
       const animatedObjects: AnimatedObject[] = [];
 
@@ -191,12 +194,13 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         const sprite = new PIXI.Sprite(textureFor(definition.asset));
         const world = geometry.worldPoint(definition.position);
         const screen = isoToScreen(world);
-        sprite.anchor.set(0.5, 1);
+        sprite.anchor.set(definition.anchor?.x ?? 0.5, definition.anchor?.y ?? 1);
         sprite.width = definition.displayWidth;
-        sprite.scale.y = sprite.scale.x;
+        sprite.scale.y = Math.abs(sprite.scale.x);
+        if (definition.direction === 2) sprite.scale.x *= -1;
         node.addChild(sprite);
         node.position.set(screen.x, screen.y);
-        node.zIndex = isoDepth(world) + (definition.depthBias ?? 0);
+        node.zIndex = isoDepth(geometry.worldPoint(definition.depthBase ?? definition.position)) + (definition.depthBias ?? 0);
         node.name = definition.id;
 
         if (definition.interaction) {
@@ -299,8 +303,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           node,
           visual,
           shadow,
-          movement: new MovementController(position, definition.player ? 2.75 : 1.25),
-          animation: new AvatarAnimationController(),
+          user: core.addUser(definition.id, position, definition.player ? 2.75 : 1.25),
           patrol: definition.patrol ?? [],
           waypointIndex: 0,
           nextMoveAt: 1800 + index * 820,
@@ -327,14 +330,14 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           visual.on('pointerout', () => node.scale.set(1));
           visual.on('pointertap', (event) => {
             event.stopPropagation();
-            placeSelectionRing(actor.movement.position);
+            placeSelectionRing(actor.user.iso);
             setSelection({ sourceId: definition.id, title: definition.name, description: `${definition.name} is spending time in ${room.name}.`, actionLabel: 'View Profile', action: 'view-profile', targetId: definition.name, icon: '●' });
             showSpeech(actor, `Hey! I'm ${definition.name}.`);
             onInteract(`${definition.name} waves hello.`);
-            const dx = player.movement.position.x - actor.movement.position.x;
-            const dy = player.movement.position.y - actor.movement.position.y;
+            const dx = player.user.iso.x - actor.user.iso.x;
+            const dy = player.user.iso.y - actor.user.iso.y;
             const distance = Math.max(Math.hypot(dx, dy), 1);
-            routeActor(player, { x: actor.movement.position.x + dx / distance * 0.9, y: actor.movement.position.y + dy / distance * 0.9 });
+            routeActor(player, { x: actor.user.iso.x + dx / distance * 0.9, y: actor.user.iso.y + dy / distance * 0.9 });
           });
         }
         scene.addChild(node);
@@ -345,13 +348,13 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       player = actors.find((_, index) => room.avatars[index].player) ?? actors[0];
       const residents = actors.filter((actor) => actor !== player);
       const placeActor = (actor: Actor) => {
-        const world = geometry.worldPoint(actor.movement.position);
+        const world = geometry.worldPoint(actor.user.iso);
         const screen = isoToScreen(world);
         actor.node.position.set(screen.x, screen.y);
         actor.node.zIndex = isoDepth(world) + actor.depthBias;
       };
       actors.forEach(placeActor);
-      runtime.current = { say: (text) => showSpeech(player, text) };
+      runtime.current = { say: (text) => showSpeech(player, text), zoomBy: (amount) => camera.zoomBy(amount), recenter: () => camera.recenter() };
 
       const spawnFootstep = (position: IsoPoint) => {
         const world = geometry.worldPoint(position);
@@ -366,7 +369,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         footsteps.push({ graphic, life: 1 });
       };
 
-      const updateActorVisual = (actor: Actor, frame: MovementFrame, deltaMs: number, isPlayer: boolean) => {
+      const updateActorVisual = (actor: Actor, frame: RoomUserFrame, isPlayer: boolean) => {
         if (actor.pose === 'sit') {
           actor.visual.setFrame('south', 0);
           actor.visual.y = 9 + Math.sin(app.ticker.lastTime / 780) * 0.25;
@@ -374,14 +377,13 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           placeActor(actor);
           return;
         }
-        const animation = actor.animation.update(deltaMs, frame.moved, frame.screenDelta);
-        actor.visual.setFrame(animation.direction, animation.frame);
-        actor.visual.y = animation.motion === 'idle' ? Math.sin(animation.idlePhase) * 0.35 : 0;
-        actor.shadow.alpha = animation.motion === 'walk' ? 0.24 : 0.31;
+        actor.visual.setFrame(frame.direction, frame.animationFrame);
+        actor.visual.y = frame.motion === 'idle' ? Math.sin(app.ticker.lastTime / 780) * 0.35 : 0;
+        actor.shadow.alpha = frame.motion === 'walk' ? 0.24 : 0.31;
         if (isPlayer && frame.moved > 0) {
           actor.stepTravel += frame.moved;
           if (actor.stepTravel > 0.5) {
-            spawnFootstep(actor.movement.position);
+            spawnFootstep(actor.user.iso);
             actor.stepTravel = 0;
           }
         }
@@ -398,13 +400,33 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       const roomBounds = new PIXI.Rectangle(minX, minY, maxX - minX, maxY - minY);
       camera.configure(roomBounds, geometry.spawn);
       scene.hitArea = new PIXI.Rectangle(roomBounds.x - 100, roomBounds.y - 100, roomBounds.width + 200, roomBounds.height + 200);
+      let dragStart: PIXI.Point | null = null;
+      let dragged = false;
+      scene.on('pointerdown', (event) => {
+        dragStart = event.global.clone();
+        dragged = false;
+      });
       scene.on('pointermove', (event) => {
+        if (dragStart) {
+          const next = event.global;
+          const dx = next.x - dragStart.x;
+          const dy = next.y - dragStart.y;
+          if (Math.hypot(dx, dy) > 2) {
+            camera.panBy(dx, dy);
+            dragStart.copyFrom(next);
+            dragged = true;
+          }
+          return;
+        }
         const target = snapToTile(screenToIso(event.getLocalPosition(scene)));
         if (!insideFloor(target)) { tileCursor.visible = false; return; }
         drawTileCursor(target, blocked(target));
       });
-      scene.on('pointerout', () => { tileCursor.visible = false; });
+      scene.on('pointerup', () => { dragStart = null; });
+      scene.on('pointerupoutside', () => { dragStart = null; });
+      scene.on('pointerout', () => { tileCursor.visible = false; dragStart = null; });
       scene.on('pointertap', (event) => {
+        if (dragged) { dragged = false; return; }
         const target = snapToTile(screenToIso(event.getLocalPosition(scene)));
         if (!blocked(target) && routeActor(player, target)) {
           placeSelectionRing(target);
@@ -413,9 +435,15 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           onInteract('That spot is not reachable. Choose another tile.');
         }
       });
+      const onWheel = (event: WheelEvent) => {
+        event.preventDefault();
+        camera.zoomBy(event.deltaY < 0 ? 0.08 : -0.08);
+      };
+      hostElement.addEventListener('wheel', onWheel, { passive: false });
+      removeWheel = () => hostElement.removeEventListener('wheel', onWheel);
 
       let playerMoving = false;
-      const layout = (immediate = false) => camera.layout(scene, app.screen, geometry.worldPoint(player.movement.position), playerMoving, immediate);
+      const layout = (immediate = false) => camera.layout(scene, app.screen, geometry.worldPoint(player.user.iso), playerMoving, immediate);
       const onResize = () => { renderAtmosphere(); layout(true); };
       app.renderer.on('resize', onResize);
       layout(true);
@@ -432,18 +460,20 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         if (keys.has('a') || keys.has('arrowleft')) { dx -= keyboardStep; dy += keyboardStep; }
         if (keys.has('d') || keys.has('arrowright')) { dx += keyboardStep; dy -= keyboardStep; }
         const playerFrame = dx || dy
-          ? player.movement.moveDirect({ x: dx, y: dy }, blocked)
-          : player.movement.update(deltaSeconds, blocked);
+          ? core.moveUserDirect(player.id, { x: dx, y: dy }, deltaMs)
+          : core.tickUser(player.id, deltaSeconds, time);
+        if (!playerFrame) return;
         playerMoving = playerFrame.moving;
-        updateActorVisual(player, playerFrame, deltaMs, true);
+        updateActorVisual(player, playerFrame, true);
 
         residents.forEach((actor, index) => {
-          if (!actor.movement.moving && actor.patrol.length > 1 && time > actor.nextMoveAt) {
+          if (!actor.user.moving && actor.patrol.length > 1 && time > actor.nextMoveAt) {
             actor.waypointIndex = (actor.waypointIndex + 1) % actor.patrol.length;
             routeActor(actor, actor.patrol[actor.waypointIndex]);
             actor.nextMoveAt = time + 3400 + index * 620;
           }
-          updateActorVisual(actor, actor.movement.update(deltaSeconds, blocked), deltaMs, false);
+          const residentFrame = core.tickUser(actor.id, deltaSeconds, time);
+          if (residentFrame) updateActorVisual(actor, residentFrame, false);
           if (!actor.bubble && actor.ambientSpeech.length > 0 && time > actor.nextSpeechAt) {
             showSpeech(actor, actor.ambientSpeech[actor.speechIndex % actor.ambientSpeech.length]);
             actor.speechIndex += 1;
@@ -490,6 +520,8 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       runtime.current = null;
       removeEventListener('keydown', keyDown);
       removeEventListener('keyup', keyUp);
+      removeWheel();
+      hostElement.replaceChildren();
       app.destroy(true, { children: true });
     };
   }, [onInteract, onOpenProfile, onPresenceUpdate, room]);
@@ -499,6 +531,11 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       <div ref={host} className="absolute inset-0 touch-none" />
       <div className="absolute left-3 top-2.5 rounded-full border border-amber-100/15 bg-[#102a31]/80 px-3 py-1.5 text-[11px] font-bold text-amber-50 shadow-lg backdrop-blur-md">
         <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(74,222,128,.7)]" />{room.ui.subtitle}
+      </div>
+      <div className="absolute right-3 top-3 z-20 flex gap-1 rounded-xl border border-white/10 bg-[#10252d]/85 p-1 shadow-lg backdrop-blur">
+        <button type="button" aria-label="Zoom out" onClick={() => runtime.current?.zoomBy(-0.1)} className="h-8 w-8 rounded-lg text-lg font-black text-amber-100 hover:bg-white/10">−</button>
+        <button type="button" aria-label="Recenter camera" onClick={() => runtime.current?.recenter()} className="h-8 rounded-lg px-2 text-[10px] font-black uppercase text-white/80 hover:bg-white/10">Focus</button>
+        <button type="button" aria-label="Zoom in" onClick={() => runtime.current?.zoomBy(0.1)} className="h-8 w-8 rounded-lg text-lg font-black text-amber-100 hover:bg-white/10">+</button>
       </div>
       {selection ? (
         <section className="absolute bottom-20 left-3 right-3 z-20 rounded-2xl border border-amber-100/15 bg-[#10252d]/95 p-4 text-white shadow-2xl backdrop-blur-md md:left-auto md:right-4 md:w-72">

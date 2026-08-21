@@ -1,11 +1,13 @@
+import { WORLD_SCALE } from './worldScale';
+
 export interface IsoPoint { x: number; y: number; z?: number; }
 export type CollisionShape =
   | { kind: 'circle'; x: number; y: number; radius: number }
   | { kind: 'rect'; x: number; y: number; width: number; height: number };
 
-export const TILE_WIDTH = 128;
-export const TILE_HEIGHT = 64;
-export const ELEVATION_HEIGHT = 32;
+export const TILE_WIDTH = WORLD_SCALE.tileWidth;
+export const TILE_HEIGHT = WORLD_SCALE.tileHeight;
+export const ELEVATION_HEIGHT = WORLD_SCALE.elevationHeight;
 
 export function isoToScreen(point: IsoPoint): IsoPoint {
   return { x: (point.x - point.y) * TILE_WIDTH / 2, y: (point.x + point.y) * TILE_HEIGHT / 2 - (point.z ?? 0) * ELEVATION_HEIGHT };

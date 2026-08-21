@@ -44,7 +44,8 @@ export class AvatarRenderer extends PIXI.Container {
   setFrame(direction: AvatarDirection, frame: number) {
     const row = directionRows[direction];
     for (const layer of this.frameSets) {
-      layer.sprite.texture = layer.frames[row]?.[frame % layer.frames[row].length] ?? PIXI.Texture.EMPTY;
+      const rowFrames = layer.frames[row] ?? layer.frames[0];
+      layer.sprite.texture = rowFrames?.[frame % rowFrames.length] ?? PIXI.Texture.EMPTY;
     }
   }
 }

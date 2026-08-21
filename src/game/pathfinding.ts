@@ -1,7 +1,7 @@
 import type { IsoPoint } from './isometric';
 
 const GRID_STEP = 0.5;
-const MAX_VISITED_NODES = 2400;
+const MAX_VISITED_NODES = 8000;
 
 interface GridPoint { x: number; y: number }
 interface SearchNode extends GridPoint { g: number; f: number; parent?: string }

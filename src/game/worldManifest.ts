@@ -1,42 +1,26 @@
-import type { AvatarAppearance, RoomCellDefinition, RoomDefinition, RoomGeometryDefinition } from './roomEngine';
+import { placeFurniture } from './furnitureCatalog';
+import { AvatarStructure } from './openHotel/AvatarStructure';
+import type { AvatarAppearance, RoomAvatarDefinition, RoomCellDefinition, RoomDefinition, RoomGeometryDefinition, RoomInteraction } from './roomEngine';
+import { WORLD_SCALE } from './worldScale';
 
-const roomRoot = '/assets/world/social-room';
+const groundRoot = '/assets/world/ground';
+const socialRoot = '/assets/world/social-room';
+const characterRoot = '/assets/world/characters';
 
 export const worldAssets = {
-  ground: `${roomRoot}/floor/stone.svg`, groundVariant: `${roomRoot}/floor/stone-dark.svg`, path: `${roomRoot}/floor/wood.svg`, garden: `${roomRoot}/floor/stone-dark.svg`, platform: `${roomRoot}/floor/rug.svg`,
-  wallX: `${roomRoot}/walls/wall-x.svg`, wallY: `${roomRoot}/walls/wall-y.svg`,
-  chair: `${roomRoot}/furniture/chair.svg`, table: `${roomRoot}/furniture/table.svg`, sofa: `${roomRoot}/furniture/sofa.svg`, plant: `${roomRoot}/furniture/plant.svg`, lamp: `${roomRoot}/furniture/lamp.svg`, cafeCounter: `${roomRoot}/furniture/cafe-counter.svg`, communityBoard: `${roomRoot}/furniture/community-board.svg`, marketStand: `${roomRoot}/furniture/market-stand.svg`, fountain: `${roomRoot}/furniture/fountain.svg`, divider: `${roomRoot}/furniture/divider.svg`,
-  avatarShadow: '/assets/world/characters/avatar-shadow.svg', playerAtlas: `${roomRoot}/characters/player-atlas.png`, alexAtlas: `${roomRoot}/characters/alex-atlas.png`, mayaAtlas: `${roomRoot}/characters/maya-atlas.png`, sofiaAtlas: `${roomRoot}/characters/sofia-atlas.png`,
+  ground: `${groundRoot}/plaza-stone-a.svg`, groundVariant: `${groundRoot}/plaza-stone-b.svg`, path: `${groundRoot}/plaza-path.svg`, garden: `${groundRoot}/garden-tile.svg`, platform: `${groundRoot}/platform-tile.svg`,
+  avatarShadow: `${characterRoot}/avatar-shadow.svg`,
+  playerAtlas: `${socialRoot}/characters/player-atlas.png`, alexAtlas: `${socialRoot}/characters/alex-atlas.png`, mayaAtlas: `${socialRoot}/characters/maya-atlas.png`, sofiaAtlas: `${socialRoot}/characters/sofia-atlas.png`,
 } as const;
 
-const avatarAppearance = (asset: string, renderWidth = 140): AvatarAppearance => ({ frameColumns: 4, frameRows: 4, renderWidth, layers: [{ slot: 'body', asset }] });
-const appearances = { player: avatarAppearance(worldAssets.playerAtlas, 142), alex: avatarAppearance(worldAssets.alexAtlas), maya: avatarAppearance(worldAssets.mayaAtlas, 142), sofia: avatarAppearance(worldAssets.sofiaAtlas, 142) };
-
-function createSocialRoomGeometry(): RoomGeometryDefinition {
-  const cells: RoomCellDefinition[] = [];
-  for (let y = -4; y <= 4; y += 1) for (let x = -4; x <= 4; x += 1) {
-    const central = Math.abs(x) <= 1 && Math.abs(y) <= 1;
-    const cafe = x <= -2 && y <= 0;
-    const lounge = x <= -2 && y >= 1;
-    const market = x >= 2 && y <= 0;
-    const material = central ? 'platform' : cafe ? 'path' : lounge ? 'platform' : market ? 'garden' : 'stone';
-    cells.push({ x, y, elevation: 0, material, walkable: true });
-  }
-  return {
-    cells, spawn: { x: 0, y: 3.65 }, maxStepHeight: 0.35,
-    exits: [
-      { id: 'arrival-door', position: { x: 0, y: 4 }, targetRoomId: 'world-map', label: 'World entrance' },
-      { id: 'cafe-door', position: { x: -3.25, y: -1.4 }, targetRoomId: 'lunas-cafe', label: "Luna's Cafe" },
-      { id: 'gallery-door', position: { x: 3.55, y: 0.6 }, targetRoomId: 'human-gallery', label: 'Human Gallery' },
-    ],
-    walls: [
-      { id: 'north-room-wall', from: { x: -4.5, y: -4.5 }, to: { x: 4.5, y: -4.5 }, kind: 'wall', height: 126, thickness: 0.16, blocksMovement: true, asset: worldAssets.wallX, displayWidth: 132 },
-      { id: 'west-room-wall', from: { x: -4.5, y: -4.5 }, to: { x: -4.5, y: 4.5 }, kind: 'wall', height: 126, thickness: 0.16, blocksMovement: true, asset: worldAssets.wallY, displayWidth: 132 },
-    ],
-  };
-}
-
-const sit = (title: string) => ({ title, description: 'A comfortable place to join the conversation.', actionLabel: 'Sit', action: 'sit' as const, icon: '⌁' });
+const atlasAppearance = (asset: string): AvatarAppearance => ({ frameColumns: 4, frameRows: 4, renderWidth: WORLD_SCALE.avatarHeight, layers: [{ slot: 'body', asset }] });
+const modularPlayer = new AvatarStructure()
+  .add({ slot: 'body', asset: `${characterRoot}/avatar-body.svg`, tint: 0x315db3 })
+  .add({ slot: 'head', asset: `${characterRoot}/avatar-skin.svg`, tint: 0xf2b78d })
+  .add({ slot: 'hair', asset: `${characterRoot}/avatar-hair.svg`, tint: 0x8f3322 })
+  .add({ slot: 'accessory', asset: `${characterRoot}/avatar-accessory.svg`, tint: 0xf1bd55 })
+  .build(WORLD_SCALE.avatarHeight);
+const appearances = { player: modularPlayer, alex: atlasAppearance(worldAssets.alexAtlas), maya: atlasAppearance(worldAssets.mayaAtlas), sofia: atlasAppearance(worldAssets.sofiaAtlas) };
 const palettes = {
   player: { skin: 0xf2b78d, hair: 0x8f3322, outfit: 0x315db3, accessory: 0xf1bd55 },
   alex: { skin: 0x7c4328, hair: 0x211713, outfit: 0x28755d, accessory: 0xe4a83f },
@@ -44,50 +28,77 @@ const palettes = {
   sofia: { skin: 0xd99a6b, hair: 0xbab1cf, outfit: 0x4c568b, accessory: 0x2f8780 },
 };
 
+function createPlazaGeometry(): RoomGeometryDefinition {
+  const cells: RoomCellDefinition[] = [];
+  for (let y = -7; y <= 8; y += 1) for (let x = -10; x <= 9; x += 1) {
+    if ((y === -7 || y === 8) && (x < -7 || x > 7)) continue;
+    if ((y === -6 || y === 7) && (x < -9 || x > 8)) continue;
+    const fountainSquare = Math.abs(x) <= 3 && Math.abs(y) <= 3;
+    const gardenPocket = (x <= -6 && y >= 1) || (x >= 6 && y >= 2);
+    const mainPath = Math.abs(x) <= 1 || Math.abs(y) <= 1 || y >= 6;
+    const cafeTerrace = x <= -5 && y <= -2;
+    const marketTerrace = x >= 5 && y <= -2;
+    const material = fountainSquare ? 'platform' : gardenPocket ? 'garden' : mainPath || cafeTerrace || marketTerrace ? 'path' : 'stone';
+    const ornamental = gardenPocket && ((x + y) % 3 === 0) && Math.abs(x) >= 8;
+    cells.push({ x, y, elevation: fountainSquare ? 0.25 : 0, material, walkable: !ornamental });
+  }
+  return {
+    cells,
+    spawn: { x: 0, y: 7 },
+    maxStepHeight: 0.35,
+    exits: [
+      { id: 'arrival-gate', position: { x: 0, y: 8 }, targetRoomId: 'world-map', label: 'World entrance' },
+      { id: 'cafe-door', position: { x: -7, y: -5.2 }, targetRoomId: 'lunas-cafe', label: "Luna's Cafe" },
+      { id: 'gallery-door', position: { x: 7, y: 4.7 }, targetRoomId: 'human-gallery', label: 'Human Gallery' },
+    ],
+    walls: [
+      { id: 'cafe-rail', from: { x: -9.4, y: -6 }, to: { x: -5.4, y: -6 }, kind: 'curb', height: 28, thickness: 0.12, blocksMovement: true, color: 0x8d5f4c },
+      { id: 'market-rail', from: { x: 5.4, y: -6 }, to: { x: 8.4, y: -6 }, kind: 'curb', height: 28, thickness: 0.12, blocksMovement: true, color: 0x8d5f4c },
+    ],
+  };
+}
+
+const action = (title: string, description: string, actionLabel: string, type: RoomInteraction['action'], icon: string, targetId?: string): RoomInteraction => ({ title, description, actionLabel, action: type, icon, targetId });
+const npc = (id: string, name: string, position: { x: number; y: number }, appearance: keyof typeof appearances, patrol?: { x: number; y: number }[], speech: string[] = []): RoomAvatarDefinition => ({ id, name, position, appearance: appearances[appearance], palette: palettes[appearance], patrol, ambientSpeech: speech });
+
 export const centralPlazaRoom: RoomDefinition = {
-  id: 'central-plaza', name: 'Central Plaza Social Room', geometry: createSocialRoomGeometry(),
-  floor: { materials: { stone: [worldAssets.ground], path: [worldAssets.path], garden: [worldAssets.groundVariant], platform: [worldAssets.platform] } },
-  ui: { subtitle: 'Central Plaza · 15 humans online', help: 'Click a tile to walk · WASD / arrows · tap people and furniture' },
+  id: 'central-plaza', name: 'Central Plaza', geometry: createPlazaGeometry(),
+  floor: { materials: { stone: [worldAssets.ground, worldAssets.groundVariant], path: [worldAssets.path], garden: [worldAssets.garden], platform: [worldAssets.platform] } },
+  ui: { subtitle: 'Central Plaza · 14 humans online', help: 'Click/tap to walk · drag to pan · wheel or +/− to zoom · WASD / arrows' },
   objects: [
-    { id: 'fountain', asset: worldAssets.fountain, category: 'landmark', position: { x: 0, y: 0 }, displayWidth: 216, collision: { kind: 'circle', x: 0, y: 0, radius: 1.02 }, interactionPoint: { x: 0, y: 1.45 }, ambient: 'glow', interaction: { title: 'Human Fountain', description: 'The shared landmark at the center of the room.', actionLabel: 'Make a wish', action: 'use', icon: '◆' } },
-    { id: 'cafe-counter', asset: worldAssets.cafeCounter, category: 'building', position: { x: -2.65, y: -3 }, displayWidth: 210, collision: { kind: 'rect', x: -2.65, y: -3, width: 2.45, height: 0.82 }, interactionPoint: { x: -2.2, y: -1.9 }, interaction: { title: "Luna's Cafe", description: 'A warm corner for coffee and conversation.', actionLabel: 'Enter Cafe', action: 'enter-room', targetId: 'lunas-cafe', icon: '☕' } },
-    { id: 'cafe-table', asset: worldAssets.table, category: 'furniture', position: { x: -2.25, y: -1.2 }, displayWidth: 112, collision: { kind: 'circle', x: -2.25, y: -1.2, radius: 0.58 }, interaction: { title: 'Cafe table', description: 'Two cups and an open seat.', actionLabel: 'Join table', action: 'sit', icon: '☕' } },
-    { id: 'cafe-chair-a', asset: worldAssets.chair, category: 'furniture', position: { x: -3.15, y: -1.05 }, displayWidth: 68, collision: { kind: 'circle', x: -3.15, y: -1.05, radius: 0.3 } },
-    { id: 'cafe-chair-b', asset: worldAssets.chair, category: 'furniture', position: { x: -1.55, y: -1.7 }, displayWidth: 68, collision: { kind: 'circle', x: -1.55, y: -1.7, radius: 0.3 } },
-    { id: 'cafe-plant', asset: worldAssets.plant, category: 'vegetation', position: { x: -3.85, y: -2.2 }, displayWidth: 82, collision: { kind: 'circle', x: -3.85, y: -2.2, radius: 0.36 } },
-    { id: 'cafe-lamp', asset: worldAssets.lamp, category: 'prop', position: { x: -1.25, y: -3.55 }, displayWidth: 62, collision: { kind: 'circle', x: -1.25, y: -3.55, radius: 0.22 }, ambient: 'glow' },
-    { id: 'market-stand', asset: worldAssets.marketStand, category: 'building', position: { x: 2.65, y: -2.8 }, displayWidth: 194, collision: { kind: 'rect', x: 2.65, y: -2.8, width: 2.1, height: 0.9 }, interactionPoint: { x: 2.2, y: -1.55 }, ambient: 'sway', interaction: { title: 'Neighbourhood Market', description: 'Browse colorful local goods and meet the makers.', actionLabel: 'Visit Market', action: 'inspect', icon: '✦' } },
-    { id: 'market-table', asset: worldAssets.table, category: 'furniture', position: { x: 2.8, y: -1.15 }, displayWidth: 94, collision: { kind: 'circle', x: 2.8, y: -1.15, radius: 0.5 } },
-    { id: 'market-plant', asset: worldAssets.plant, category: 'vegetation', position: { x: 3.75, y: -1.3 }, displayWidth: 76, collision: { kind: 'circle', x: 3.75, y: -1.3, radius: 0.33 } },
-    { id: 'lounge-sofa', asset: worldAssets.sofa, category: 'furniture', position: { x: -2.75, y: 2.7 }, displayWidth: 174, collision: { kind: 'rect', x: -2.75, y: 2.7, width: 1.95, height: 0.72 }, interactionPoint: { x: -1.8, y: 1.9 }, interaction: sit('Community sofa') },
-    { id: 'lounge-table', asset: worldAssets.table, category: 'furniture', position: { x: -2.3, y: 1.25 }, displayWidth: 94, collision: { kind: 'circle', x: -2.3, y: 1.25, radius: 0.48 } },
-    { id: 'lounge-chair', asset: worldAssets.chair, category: 'furniture', position: { x: -3.45, y: 1.45 }, displayWidth: 66, collision: { kind: 'circle', x: -3.45, y: 1.45, radius: 0.29 }, interaction: sit('Lounge chair') },
-    { id: 'lounge-lamp', asset: worldAssets.lamp, category: 'prop', position: { x: -3.75, y: 3.55 }, displayWidth: 64, collision: { kind: 'circle', x: -3.75, y: 3.55, radius: 0.22 }, ambient: 'glow' },
-    { id: 'lounge-plant', asset: worldAssets.plant, category: 'vegetation', position: { x: -1.25, y: 3.45 }, displayWidth: 76, collision: { kind: 'circle', x: -1.25, y: 3.45, radius: 0.33 } },
-    { id: 'community-board', asset: worldAssets.communityBoard, category: 'world-item', position: { x: 3.25, y: 2.65 }, displayWidth: 124, collision: { kind: 'rect', x: 3.25, y: 2.65, width: 0.86, height: 0.38 }, interactionPoint: { x: 2.45, y: 2 }, interaction: { title: 'Community Board', description: 'Tonight: open mic, maker swap, and a gallery walk.', actionLabel: 'Read events', action: 'inspect', icon: '!' } },
-    { id: 'event-table', asset: worldAssets.table, category: 'furniture', position: { x: 2.35, y: 1.1 }, displayWidth: 94, collision: { kind: 'circle', x: 2.35, y: 1.1, radius: 0.48 } },
-    { id: 'event-chair', asset: worldAssets.chair, category: 'furniture', position: { x: 3.3, y: 1.15 }, displayWidth: 64, collision: { kind: 'circle', x: 3.3, y: 1.15, radius: 0.28 }, interaction: sit('Event chair') },
-    { id: 'gallery-divider', asset: worldAssets.divider, category: 'prop', position: { x: 3.75, y: 0.1 }, displayWidth: 122, collision: { kind: 'rect', x: 3.75, y: 0.1, width: 1.1, height: 0.34 }, interactionPoint: { x: 3.05, y: 0.45 }, interaction: { title: 'Human Gallery', description: 'Original work from creators across Human World.', actionLabel: 'Enter Gallery', action: 'enter-room', targetId: 'human-gallery', icon: '↗' } },
-    { id: 'entry-divider-left', asset: worldAssets.divider, category: 'prop', position: { x: -2.55, y: 4 }, displayWidth: 118, collision: { kind: 'rect', x: -2.55, y: 4, width: 1.2, height: 0.32 } },
-    { id: 'entry-divider-right', asset: worldAssets.divider, category: 'prop', position: { x: 2.55, y: 4 }, displayWidth: 118, collision: { kind: 'rect', x: 2.55, y: 4, width: 1.2, height: 0.32 } },
-    { id: 'entry-lamp-left', asset: worldAssets.lamp, category: 'prop', position: { x: -1.5, y: 4 }, displayWidth: 62, collision: { kind: 'circle', x: -1.5, y: 4, radius: 0.22 }, ambient: 'glow' },
-    { id: 'entry-lamp-right', asset: worldAssets.lamp, category: 'prop', position: { x: 1.5, y: 4 }, displayWidth: 62, collision: { kind: 'circle', x: 1.5, y: 4, radius: 0.22 }, ambient: 'glow' },
+    placeFurniture('fountain', 'fountain', { x: 0, y: 0 }, { ambient: 'glow', interactionPoint: { x: 0, y: 2.1 }, interaction: action('Human Fountain', 'The landmark at the heart of Central Plaza.', 'Make a wish', 'use', '◆') }),
+    placeFurniture('cafeCounter', 'cafe-counter', { x: -7.2, y: -5.1 }, { interactionPoint: { x: -6.4, y: -3.7 }, interaction: action("Luna's Cafe", 'A warm neighborhood room for coffee and conversation.', 'Enter Cafe', 'enter-room', '☕', 'lunas-cafe') }),
+    placeFurniture('table', 'cafe-table-a', { x: -8, y: -2.8 }), placeFurniture('chair', 'cafe-chair-a', { x: -8.8, y: -2.3 }), placeFurniture('chair', 'cafe-chair-b', { x: -7.2, y: -3.3 }, { direction: 2 }),
+    placeFurniture('table', 'cafe-table-b', { x: -5.3, y: -3.4 }), placeFurniture('chair', 'cafe-chair-c', { x: -6.1, y: -2.9 }), placeFurniture('chair', 'cafe-chair-d', { x: -4.5, y: -3.9 }, { direction: 2 }),
+    placeFurniture('marketStall', 'market-stall', { x: 7, y: -4.7 }, { ambient: 'sway', interactionPoint: { x: 6.2, y: -2.9 }, interaction: action('Neighbourhood Market', 'Original wares from local Human World makers.', 'Visit Market', 'inspect', '✦') }),
+    placeFurniture('table', 'market-table', { x: 4.8, y: -3.5 }), placeFurniture('plant', 'market-plant', { x: 8.7, y: -2.4 }),
+    placeFurniture('bench', 'fountain-bench-west', { x: -3.9, y: 0.8 }, { interaction: action('West fountain bench', 'A good place to watch the plaza.', 'Sit', 'sit', '⌁') }),
+    placeFurniture('bench', 'fountain-bench-east', { x: 3.9, y: -0.8 }, { direction: 2, interaction: action('East fountain bench', 'Meet someone by the water.', 'Sit', 'sit', '⌁') }),
+    placeFurniture('bench', 'garden-bench-a', { x: -7.3, y: 3.7 }, { interaction: action('Garden bench', 'A quiet seat under the plaza greenery.', 'Sit', 'sit', '⌁') }),
+    placeFurniture('bench', 'garden-bench-b', { x: -5.7, y: 5.5 }, { direction: 2, interaction: action('Garden bench', 'A quiet seat under the plaza greenery.', 'Sit', 'sit', '⌁') }),
+    placeFurniture('plant', 'garden-plant-a', { x: -9, y: 2 }), placeFurniture('plant', 'garden-plant-b', { x: -8, y: 5 }), placeFurniture('plant', 'garden-plant-c', { x: -6, y: 2 }),
+    placeFurniture('communityBoard', 'community-board', { x: 7.5, y: 4.3 }, { interactionPoint: { x: 6.2, y: 4.1 }, interaction: action('Community Board', 'Open mic, maker swap, and gallery walk tonight.', 'Read events', 'inspect', '!') }),
+    placeFurniture('sofa', 'community-sofa', { x: 5.1, y: 5.3 }, { interaction: action('Community sofa', 'A shared seat beside the events board.', 'Sit', 'sit', '⌁') }), placeFurniture('table', 'community-table', { x: 4.1, y: 3.8 }), placeFurniture('chair', 'community-chair', { x: 3.3, y: 4.4 }),
+    placeFurniture('divider', 'gallery-entrance', { x: 8.4, y: 5 }, { interactionPoint: { x: 7, y: 5.1 }, interaction: action('Human Gallery', 'A room of original creator work.', 'Enter Gallery', 'enter-room', '↗', 'human-gallery') }),
+    placeFurniture('divider', 'entry-left', { x: -2.4, y: 7.2 }), placeFurniture('divider', 'entry-right', { x: 2.4, y: 7.2 }, { direction: 2 }),
+    placeFurniture('lamp', 'lamp-entry-a', { x: -3.8, y: 6.8 }, { ambient: 'glow' }), placeFurniture('lamp', 'lamp-entry-b', { x: 3.8, y: 6.8 }, { ambient: 'glow' }),
+    placeFurniture('lamp', 'lamp-path-a', { x: -4.2, y: 2.8 }, { ambient: 'glow' }), placeFurniture('lamp', 'lamp-path-b', { x: 4.2, y: 2.8 }, { ambient: 'glow' }),
+    placeFurniture('lamp', 'lamp-market', { x: 4.5, y: -5 }, { ambient: 'glow' }), placeFurniture('lamp', 'lamp-cafe', { x: -4.5, y: -5 }, { ambient: 'glow' }),
   ],
   avatars: [
-    { id: 'player', name: 'You', position: { x: 0, y: 3.65 }, palette: palettes.player, appearance: appearances.player, player: true },
-    { id: 'alex', name: 'Alex', position: { x: -2.05, y: -2.05 }, palette: palettes.alex, appearance: appearances.alex, patrol: [{ x: -2.05, y: -2.05 }, { x: -1.2, y: -1.2 }], ambientSpeech: ['Coffee is on me.', 'Welcome to the room!'] },
-    { id: 'iris', name: 'Iris', position: { x: -3.35, y: -1.75 }, palette: palettes.sofia, appearance: appearances.sofia, ambientSpeech: ['Open mic later?'] },
-    { id: 'noor', name: 'Noor', position: { x: -1.25, y: -2.45 }, palette: palettes.maya, appearance: appearances.maya, ambientSpeech: ['This corner is cozy.'] },
-    { id: 'maya', name: 'Maya', position: { x: 0.9, y: 1.45 }, palette: palettes.maya, appearance: appearances.maya, patrol: [{ x: 0.9, y: 1.45 }, { x: 1.35, y: 0.8 }], ambientSpeech: ['Meet by the fountain?'] },
-    { id: 'diego', name: 'Diego', position: { x: 1.25, y: -0.45 }, palette: palettes.alex, appearance: appearances.alex, patrol: [{ x: 1.25, y: -0.45 }, { x: 1.6, y: 0.15 }], ambientSpeech: ['The room is buzzing.'] },
-    { id: 'hana', name: 'Hana', position: { x: -0.85, y: 1.05 }, palette: palettes.maya, appearance: appearances.maya, ambientSpeech: ['Great spot for a photo.'] },
-    { id: 'sofia', name: 'Sofia', position: { x: -2.8, y: 2.45 }, palette: palettes.sofia, appearance: appearances.sofia, pose: 'sit', depthBias: -1, ambientSpeech: ['I saved you a seat.'] },
-    { id: 'leila', name: 'Leila', position: { x: -3.45, y: 1.3 }, palette: palettes.maya, appearance: appearances.maya, pose: 'sit', depthBias: -1, ambientSpeech: ['Come join us.'] },
-    { id: 'ravi', name: 'Ravi', position: { x: -1.55, y: 2.1 }, palette: palettes.alex, appearance: appearances.alex, ambientSpeech: ['Love the lounge playlist.'] },
-    { id: 'omar', name: 'Omar', position: { x: 2.1, y: -1.85 }, palette: palettes.alex, appearance: appearances.alex, ambientSpeech: ['Fresh finds today!'] },
-    { id: 'june', name: 'June', position: { x: 3.35, y: -1.55 }, palette: palettes.sofia, appearance: appearances.sofia, patrol: [{ x: 3.35, y: -1.55 }, { x: 2.25, y: -0.75 }], ambientSpeech: ['Want to browse?'] },
-    { id: 'nico', name: 'Nico', position: { x: 2.15, y: -3.55 }, palette: palettes.player, appearance: appearances.player, ambientSpeech: ['New stock just landed.'] },
-    { id: 'ava', name: 'Ava', position: { x: 0.9, y: 3.45 }, palette: palettes.maya, appearance: appearances.maya, patrol: [{ x: 0.9, y: 3.45 }, { x: 0.6, y: 2.7 }], ambientSpeech: ['Glad you made it!'] },
-    { id: 'theo', name: 'Theo', position: { x: 2.35, y: 2.05 }, palette: palettes.alex, appearance: appearances.alex, pose: 'sit', depthBias: -1, ambientSpeech: ['Events are on the board.'] },
+    { id: 'player', name: 'You', position: { x: 0, y: 7 }, palette: palettes.player, appearance: appearances.player, player: true },
+    npc('alex', 'Alex', { x: -6.4, y: -3.2 }, 'alex', [{ x: -6.4, y: -3.2 }, { x: -3.2, y: -1.4 }], ['Coffee is on me.', 'Welcome to the plaza!']),
+    npc('iris', 'Iris', { x: -8.3, y: -1 }, 'sofia', [{ x: -8.3, y: -1 }, { x: -5.1, y: 0.4 }], ['Open mic later?']),
+    npc('noor', 'Noor', { x: -2.5, y: -3.7 }, 'maya', [{ x: -2.5, y: -3.7 }, { x: -1.4, y: -1.5 }], ['The cafe terrace is cozy.']),
+    npc('maya', 'Maya', { x: 0.8, y: 2.8 }, 'maya', [{ x: 0.8, y: 2.8 }, { x: -1.6, y: 1.8 }], ['Meet by the fountain?']),
+    npc('diego', 'Diego', { x: 2.6, y: 1.8 }, 'alex', [{ x: 2.6, y: 1.8 }, { x: 1.4, y: -2.8 }], ['The plaza is buzzing.']),
+    npc('hana', 'Hana', { x: -5.1, y: 4.4 }, 'maya', [{ x: -5.1, y: 4.4 }, { x: -2.2, y: 5.6 }], ['The garden path is my favorite.']),
+    npc('sofia', 'Sofia', { x: -7.1, y: 5.1 }, 'sofia', undefined, ['I saved you a seat.']),
+    npc('ravi', 'Ravi', { x: 1.4, y: 5.4 }, 'alex', [{ x: 1.4, y: 5.4 }, { x: -1.4, y: 4.1 }], ['Long walk from the entrance!']),
+    npc('omar', 'Omar', { x: 5.1, y: -2.5 }, 'alex', [{ x: 5.1, y: -2.5 }, { x: 3.3, y: -0.8 }], ['Fresh market finds today!']),
+    npc('june', 'June', { x: 8.1, y: -1 }, 'sofia', [{ x: 8.1, y: -1 }, { x: 5.2, y: 1.1 }], ['Want to browse?']),
+    npc('ava', 'Ava', { x: 4.3, y: 4.9 }, 'maya', [{ x: 4.3, y: 4.9 }, { x: 2.1, y: 3.2 }], ['Events are on the board.']),
+    npc('theo', 'Theo', { x: 7.1, y: 6 }, 'alex', [{ x: 7.1, y: 6 }, { x: 4.8, y: 6.1 }], ['Gallery walk starts soon.']),
+    npc('leila', 'Leila', { x: -2.1, y: 0.3 }, 'maya', [{ x: -2.1, y: 0.3 }, { x: 2.2, y: 0.2 }], ['See you across the square!']),
   ],
 };

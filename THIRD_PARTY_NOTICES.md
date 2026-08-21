@@ -2,15 +2,27 @@
 
 ## Open Hotel Client
 
-Human World's social-room rebuild was informed by the room-engine architecture of the Open Hotel Client project:
+Human World's room core includes TypeScript/PixiJS 7 adaptations of selected room-engine modules from the Open Hotel Client project:
 
 - Project: https://github.com/open-hotel/open-hotel-client
 - Copyright (c) 2019 Open Hotel
+- Source revision studied: `1ff598ab5bd13c3136dfcd134e5f7db988490919`
 - License: MIT
 
-The reference study covered room-owned height maps, floor and wall lifecycle, user world coordinates, interactive floor cells, avatar animation state, and position-derived depth ordering. Human World implements these ideas independently in TypeScript, React, and PixiJS through its existing `roomEngine`, `RoomGeometry`, `worldManifest`, and `IsometricRoomEngine` modules.
+Adaptation map:
 
-No Open Hotel, Habbo, or Sulake assets were copied. No substantial literal Open Hotel source code was incorporated.
+- `src/engine/lib/util/Matrix.ts` → `src/game/openHotel/Matrix.ts`
+- `src/engine/isometric/Vector3.ts` → `src/game/openHotel/Vector3.ts`
+- `src/engine/isometric/IsometricUtils.ts` → `src/game/openHotel/IsometricUtils.ts`
+- `src/game/room/Room.engine.ts` → `src/game/openHotel/RoomEngineCore.ts`
+- `src/game/room/Room.model.ts` and room model types → `src/game/openHotel/RoomModel.ts`
+- `src/game/room/users/RoomUser.ts` → `src/game/openHotel/RoomUser.ts`
+- `src/game/imager/avatar/animation/AnimationManager.ts` → `src/game/openHotel/AnimationTimeline.ts`
+- `src/game/imager/avatar/AvatarStructure.ts` → `src/game/openHotel/AvatarStructure.ts`
+
+The adaptations retain room-owned users and coordinates, matrix/heightmap primitives, coordinate transforms, normalized animation tracks, declarative avatar-part ordering, and position-derived depth. They replace Phaser/tween assumptions with the existing React + PixiJS 7 renderer, A* routes, static collision, and soft dynamic actor occupancy. Each substantially adapted destination module also carries its source URL in a code comment.
+
+All room, furniture, and avatar art used by Human World is original to this project. No Open Hotel, Habbo, or Sulake assets, branding, or proprietary code were copied.
 
 ### MIT License
 

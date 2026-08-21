@@ -22,6 +22,7 @@ export interface RoomInteraction {
 
 export interface RoomObjectDefinition {
   id: string;
+  catalogId?: string;
   asset: string;
   category: RoomObjectCategory;
   position: IsoPoint;
@@ -31,6 +32,12 @@ export interface RoomObjectDefinition {
   interactionPoint?: IsoPoint;
   depthBias?: number;
   ambient?: 'glow' | 'float' | 'sway';
+  footprint?: { width: number; height: number };
+  height?: number;
+  anchor?: { x: number; y: number };
+  direction?: number;
+  state?: string;
+  depthBase?: IsoPoint;
 }
 
 export interface RoomAvatarDefinition {
