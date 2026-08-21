@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 64">
   <defs><linearGradient id="grass" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#5f8b62"/><stop offset="1" stop-color="#3f6d58"/></linearGradient></defs>
   <path d="M64 1 127 32 64 63 1 32Z" fill="url(#grass)"/>
-  <path d="m64 4 57 28-57 28L7 32Z" fill="none" stroke="#d8cf91" stroke-opacity=".14"/>
-  <path d="m25 31 8-4m19 21 9-5m32-22 8-3M70 15l6-3" stroke="#b4cb82" stroke-width="2" stroke-linecap="round" opacity=".28"/>
+  <path d="m21 32 8-4m20 20 9-5m35-22 8-3M69 15l6-3m13 23 5-5M38 28l4-5" stroke="#b4cb82" stroke-width="2" stroke-linecap="round" opacity=".3"/>
+  <circle cx="31" cy="36" r="1.4" fill="#f1d77e" opacity=".3"/><circle cx="80" cy="43" r="1.2" fill="#d98a77" opacity=".25"/>
 </svg>

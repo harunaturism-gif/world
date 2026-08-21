@@ -29,6 +29,7 @@ function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
   const [showAvatarCustomizer, setShowAvatarCustomizer] = useState(false);
+  const inRoom = currentView === 'ROOM';
 
   const handleEnterRoom = (roomId: string) => {
     setCurrentRoomId(roomId);
@@ -87,49 +88,56 @@ function App() {
       </main>
 
       {/* Mobile-Friendly Bottom Navigation */}
-      <nav className="bg-zinc-900 border-t border-zinc-800 pb-safe z-10">
-        <div className="flex justify-around items-center h-16 px-4">
+      <nav className={`z-40 border-t pb-safe backdrop-blur-xl ${inRoom ? 'border-amber-100/10 bg-[#0b1b21]/94 shadow-[0_-14px_36px_rgba(5,20,25,.3)]' : 'border-zinc-800 bg-zinc-900'}`}>
+        <div className={`flex items-center justify-around px-2 sm:px-4 ${inRoom ? 'h-14' : 'h-16'}`}>
           <NavItem
             icon={<Search />}
             label="Search"
             isActive={showSearch}
             onClick={() => setShowSearch(true)}
+            compact={inRoom}
           />
           <NavItem
             icon={<Bell />}
             label="Alerts"
             isActive={showNotifs}
             onClick={() => setShowNotifs(true)}
+            compact={inRoom}
           />
           <NavItem
             icon={<MapIcon />}
             label="World"
-            isActive={currentView === 'MAP'}
+            isActive={currentView === 'MAP' || inRoom}
             onClick={() => setCurrentView('MAP')}
+            compact={inRoom}
           />
           <NavItem
             icon={<Compass />}
             label="Feed"
             isActive={currentView === 'FEED'}
             onClick={() => setCurrentView('FEED')}
+            compact={inRoom}
           />
           <NavItem
             icon={<Compass />}
             label="Discover"
             isActive={currentView === 'DISCOVERY'}
             onClick={() => setCurrentView('DISCOVERY')}
+            compact={inRoom}
           />
           <NavItem
             icon={<User />}
             label="Profile"
             isActive={currentView === 'PROFILE'}
             onClick={() => setCurrentView('PROFILE')}
+            compact={inRoom}
           />
           <NavItem
             icon={<Info />}
             label="Meta"
             isActive={currentView === 'SUPPORT'}
             onClick={() => setCurrentView('SUPPORT')}
+            compact={inRoom}
           />
         </div>
       </nav>
@@ -138,16 +146,17 @@ function App() {
   );
 }
 
-function NavItem({ icon, label, isActive, onClick }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void }) {
+function NavItem({ icon, label, isActive, onClick, compact = false }: { icon: React.ReactNode, label: string, isActive: boolean, onClick: () => void, compact?: boolean }) {
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center justify-center w-16 h-full transition-colors ${
-        isActive ? 'text-blue-500' : 'text-zinc-500 hover:text-zinc-300'
+      aria-label={label}
+      className={`flex h-full flex-col items-center justify-center rounded-xl transition-colors ${compact ? 'w-12 sm:w-14' : 'w-16'} ${
+        isActive ? (compact ? 'text-amber-200' : 'text-blue-500') : (compact ? 'text-white/42 hover:bg-white/5 hover:text-white/75' : 'text-zinc-500 hover:text-zinc-300')
       }`}
     >
-      <div className="mb-1">{React.cloneElement(icon as React.ReactElement, { size: 20 })}</div>
-      <span className="text-[10px] font-medium">{label}</span>
+      <div className={compact ? 'mb-0.5' : 'mb-1'}>{React.cloneElement(icon as React.ReactElement, { size: compact ? 18 : 20 })}</div>
+      <span className={`${compact ? 'text-[8px] font-bold uppercase tracking-wide' : 'text-[10px] font-medium'}`}>{label}</span>
     </button>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Send } from 'lucide-react';
 import type { ChatMessage } from '../world/Room';
 
@@ -12,7 +12,6 @@ export function Chat({ onSendMessage, incomingMessage }: ChatProps) {
     { id: 1, author: 'System', text: 'Welcome to Central Plaza', isSystem: true }
   ]);
   const [input, setInput] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (incomingMessage) {
@@ -24,39 +23,38 @@ export function Chat({ onSendMessage, incomingMessage }: ChatProps) {
     }
   }, [incomingMessage]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    onSendMessage(input);
+    const message = input.trim();
+    if (!message) return;
+    onSendMessage(message);
+    setMessages((current) => [...current, { id: Date.now(), author: 'You', text: message, isSystem: false }]);
     setInput('');
   };
 
+  const latestMessage = [...messages].reverse().find((message) => !message.isSystem);
+
   return (
-    <div className="h-48 bg-zinc-950/80 backdrop-blur-md border-t border-zinc-800 flex flex-col pointer-events-auto">
-      <div className="flex-1 overflow-y-auto p-4 space-y-2 no-scrollbar">
-        {messages.map((m) => (
-          <div key={m.id} className={`text-sm ${m.isSystem ? 'text-zinc-500 italic' : 'text-zinc-300'}`}>
-            {!m.isSystem && <span className="font-semibold text-blue-400 mr-2">{m.author}:</span>}
-            {m.text}
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-      <form onSubmit={handleSend} className="p-3 bg-zinc-900 border-t border-zinc-800 flex gap-2">
+    <div className="relative flex h-16 items-center border-t border-amber-100/10 bg-[#10252d]/88 px-3 shadow-[0_-14px_36px_rgba(5,20,25,.22)] backdrop-blur-xl pointer-events-auto">
+      {latestMessage ? (
+        <div className="pointer-events-none absolute -top-8 left-1/2 max-w-[80%] -translate-x-1/2 truncate rounded-full border border-white/10 bg-[#16343c]/90 px-3 py-1 text-[11px] text-white/75 shadow-lg">
+          <span className="mr-1 font-bold text-amber-200">{latestMessage.author}</span>{latestMessage.text}
+        </div>
+      ) : null}
+      <form onSubmit={handleSend} className="mx-auto flex w-full max-w-2xl items-center gap-2 rounded-full border border-white/10 bg-[#0b1b21]/72 p-1.5 pl-3 shadow-inner">
+        <span className="hidden text-[9px] font-black uppercase tracking-[0.16em] text-emerald-300/80 sm:inline">Local</span>
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Say something..."
-          className="flex-1 bg-zinc-950 border border-zinc-800 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+          aria-label="Room chat message"
+          placeholder="Say something in the plaza…"
+          className="min-w-0 flex-1 bg-transparent px-1.5 text-sm text-white placeholder:text-white/35 focus:outline-none"
         />
         <button
           type="submit"
-          className="bg-blue-600 hover:bg-blue-500 text-white p-2 rounded-full transition-colors flex items-center justify-center w-10 h-10"
+          aria-label="Send room message"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-200 text-[#10252d] transition-colors hover:bg-amber-100"
         >
           <Send size={16} />
         </button>

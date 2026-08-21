@@ -30,7 +30,7 @@ export interface RoomObjectDefinition {
   interaction?: RoomInteraction;
   interactionPoint?: IsoPoint;
   depthBias?: number;
-  ambient?: 'glow' | 'float';
+  ambient?: 'glow' | 'float' | 'sway';
 }
 
 export interface RoomAvatarDefinition {
@@ -41,6 +41,7 @@ export interface RoomAvatarDefinition {
   appearance: AvatarAppearance;
   player?: boolean;
   patrol?: IsoPoint[];
+  ambientSpeech?: string[];
 }
 
 export type RoomMaterial = 'stone' | 'path' | 'garden' | 'platform';

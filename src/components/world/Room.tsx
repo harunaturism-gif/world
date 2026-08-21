@@ -50,21 +50,21 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
   const handleSendChat = useCallback((text: string) => { setPlayerSpeech({ id: Date.now(), text }); setToast(`You said: ${text}`); setTimeout(() => setToast(null), 3000); }, []);
 
   return (
-    <div className="absolute inset-0 bg-zinc-950 flex flex-col">
+    <div className="absolute inset-0 flex flex-col bg-[#10252d]">
       {/* Header Overlay */}
-      <div className="absolute top-0 left-0 right-0 h-16 px-4 flex items-center justify-between border-b border-zinc-800/50 bg-zinc-900/80 backdrop-blur-md z-20 pointer-events-auto">
+      <div className="pointer-events-auto absolute left-0 right-0 top-0 z-20 flex h-14 items-center justify-between border-b border-white/5 bg-gradient-to-b from-[#0b1b21]/92 to-[#0b1b21]/58 px-3 backdrop-blur-md sm:px-4">
         <div className="flex items-center gap-3">
           <button
             onClick={onLeave}
-            className="p-2 -ml-2 rounded-full hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+            className="-ml-1 rounded-full p-2 text-white/65 transition-colors hover:bg-white/10 hover:text-white"
           >
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h2 className="text-white font-semibold leading-tight capitalize flex items-center gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-black capitalize leading-tight text-amber-50">
               {roomData?.name || roomId.replace('-', ' ')}
             </h2>
-            <div className="text-xs text-emerald-400 flex items-center gap-1">
+            <div className="mt-0.5 flex items-center gap-1 text-[10px] font-bold text-emerald-300">
               <Users size={12} />
               {presenceCount} humans present
             </div>
@@ -72,7 +72,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
         </div>
         <button
           onClick={() => setShowInspector(true)}
-          className="p-2 rounded-full hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+          className="rounded-full p-2 text-white/55 transition-colors hover:bg-white/10 hover:text-white"
         >
           <Info size={20} />
         </button>
@@ -91,28 +91,28 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
 
         {/* Interaction Toast Overlay */}
         {isDisconnected && (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-rose-600 text-white px-4 py-2 rounded-full shadow-lg z-50 pointer-events-none animate-in fade-in text-sm">
+          <div className="pointer-events-none absolute left-1/2 top-16 z-50 -translate-x-1/2 animate-in rounded-full bg-rose-600 px-4 py-2 text-sm text-white shadow-lg fade-in">
             Connection Lost - Reconnecting...
           </div>
         )}
 
         {toast && (
-          <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg z-30 pointer-events-none animate-in fade-in slide-in-from-top-4 text-center">
+          <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2 animate-in rounded-full border border-amber-100/15 bg-[#16343c]/94 px-4 py-2 text-center text-sm font-semibold text-amber-50 shadow-lg fade-in slide-in-from-top-4">
             {toast}
           </div>
         )}
       </div>
 
-      <div className="absolute right-3 top-20 z-30 flex flex-col gap-2">
-        <button aria-label="Central Plaza" onClick={() => onEnterRoom('central-plaza')} className="rounded-xl bg-[#17213d]/90 p-3 text-cyan-200 shadow-lg backdrop-blur hover:bg-[#24355e]"><Building2 size={18}/></button>
-        <button aria-label="Luna's Cafe" onClick={() => onEnterRoom('lunas-cafe')} className="rounded-xl bg-[#17213d]/90 p-3 text-amber-200 shadow-lg backdrop-blur hover:bg-[#24355e]"><Coffee size={18}/></button>
-        <button aria-label="Human Gallery" onClick={() => onEnterRoom('human-gallery')} className="rounded-xl bg-[#17213d]/90 p-3 text-pink-200 shadow-lg backdrop-blur hover:bg-[#24355e]"><GalleryVerticalEnd size={18}/></button>
+      <div className="absolute right-2 top-16 z-30 flex flex-col gap-1.5 sm:right-3">
+        <button aria-label="Central Plaza" onClick={() => onEnterRoom('central-plaza')} className="rounded-xl border border-white/10 bg-[#102a31]/82 p-2.5 text-cyan-100 shadow-lg backdrop-blur transition-colors hover:bg-[#28515a]"><Building2 size={17}/></button>
+        <button aria-label="Luna's Cafe" onClick={() => onEnterRoom('lunas-cafe')} className="rounded-xl border border-white/10 bg-[#102a31]/82 p-2.5 text-amber-200 shadow-lg backdrop-blur transition-colors hover:bg-[#28515a]"><Coffee size={17}/></button>
+        <button aria-label="Human Gallery" onClick={() => onEnterRoom('human-gallery')} className="rounded-xl border border-white/10 bg-[#102a31]/82 p-2.5 text-pink-200 shadow-lg backdrop-blur transition-colors hover:bg-[#28515a]"><GalleryVerticalEnd size={17}/></button>
       </div>
 
-      {roomData && roomData.type === 'plaza' && <div className="hidden md:block"><InWorldAd placementId="central-1" roomName={roomData.name} /></div>}
+      {roomData && roomData.type === 'plaza' && <div className="hidden opacity-70 xl:block"><InWorldAd placementId="central-1" roomName={roomData.name} /></div>}
 
       {/* Chat Overlay */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 max-h-20 overflow-hidden pointer-events-auto [&>div]:h-20">
+      <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-20 h-16 overflow-visible [&>div]:h-16">
         <Chat onSendMessage={handleSendChat} incomingMessage={incomingMessage} />
       </div>
 

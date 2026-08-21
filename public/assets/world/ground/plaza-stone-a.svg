@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 64">
   <defs><linearGradient id="stoneA" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#a9b2ab"/><stop offset="1" stop-color="#7f918d"/></linearGradient></defs>
   <path d="M64 1 127 32 64 63 1 32Z" fill="url(#stoneA)"/>
-  <path d="m64 3 59 29-59 29L5 32Z" fill="none" stroke="#d8d8c6" stroke-opacity=".13"/>
-  <path d="m22 31 20-10 20 10-20 10Zm43 16 17-8 16 8-16 8Z" fill="#d8d5bd" opacity=".055"/>
+  <path d="m18 29 18-9 18 9-18 9m32 16 15-7 15 7" fill="none" stroke="#d8d5bd" stroke-width="1.5" stroke-opacity=".05"/>
+  <circle cx="31" cy="34" r="1.4" fill="#456c65" opacity=".12"/><circle cx="88" cy="28" r="1" fill="#ece4c8" opacity=".16"/>
 </svg>

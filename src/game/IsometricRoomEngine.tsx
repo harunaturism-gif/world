@@ -34,17 +34,22 @@ interface Actor {
   stepTravel: number;
   bubble?: PIXI.Container;
   bubbleExpiresAt: number;
+  ambientSpeech: string[];
+  speechIndex: number;
+  nextSpeechAt: number;
 }
 
 interface AnimatedObject {
   node: PIXI.Container;
   sprite: PIXI.Sprite;
   baseY: number;
-  mode: 'glow' | 'float';
+  mode: 'glow' | 'float' | 'sway';
   offset: number;
+  baseRotation: number;
 }
 
 interface Footstep { graphic: PIXI.Graphics; life: number }
+interface AmbientParticle { graphic: PIXI.Graphics; baseY: number; phase: number }
 interface SceneRuntime { say: (text: string) => void }
 
 const snapToTile = (point: IsoPoint): IsoPoint => ({ x: Math.round(point.x * 2) / 2, y: Math.round(point.y * 2) / 2 });
@@ -77,17 +82,40 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
     if (!hostElement) return;
     const app = new PIXI.Application({
       resizeTo: hostElement,
-      backgroundColor: 0x142237,
+      backgroundColor: 0x17343d,
       antialias: true,
       resolution: Math.min(devicePixelRatio, 2),
       autoDensity: true,
     });
     hostElement.appendChild(app.view as HTMLCanvasElement);
+    const atmosphere = new PIXI.Graphics();
     const scene = new PIXI.Container();
     scene.sortableChildren = true;
-    app.stage.addChild(scene);
+    app.stage.addChild(atmosphere, scene);
+    const renderAtmosphere = () => {
+      const { width, height } = app.screen;
+      atmosphere.clear();
+      atmosphere.beginFill(0x17343d);
+      atmosphere.drawRect(0, 0, width, height);
+      atmosphere.endFill();
+      atmosphere.beginFill(0x24524c, 0.72);
+      atmosphere.drawEllipse(-width * 0.08, height * 0.44, width * 0.56, height * 0.78);
+      atmosphere.drawEllipse(width * 1.04, height * 0.58, width * 0.54, height * 0.86);
+      atmosphere.endFill();
+      atmosphere.beginFill(0x315e54, 0.3);
+      atmosphere.drawEllipse(width * 0.12, height * 0.96, width * 0.5, height * 0.27);
+      atmosphere.drawEllipse(width * 0.82, height * 0.06, width * 0.42, height * 0.2);
+      atmosphere.endFill();
+      atmosphere.beginFill(0xf2d995, 0.045);
+      for (let index = 0; index < 18; index += 1) {
+        atmosphere.drawCircle((index * 173) % Math.max(width, 1), (index * 97) % Math.max(height, 1), 2 + (index % 3));
+      }
+      atmosphere.endFill();
+    };
+    renderAtmosphere();
     const keys = new Set<string>();
     const footsteps: Footstep[] = [];
+    const ambientParticles: AmbientParticle[] = [];
     const camera = new CameraController();
     const geometry = new RoomGeometry(room.geometry);
     let disposed = false;
@@ -192,7 +220,19 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           });
         }
 
-        if (definition.ambient) animatedObjects.push({ node, sprite, baseY: sprite.y, mode: definition.ambient, offset: index });
+        if (definition.id === 'fountain') {
+          for (let particleIndex = 0; particleIndex < 7; particleIndex += 1) {
+            const particle = new PIXI.Graphics();
+            particle.beginFill(particleIndex % 2 === 0 ? 0xa9efff : 0xffefad, 0.78);
+            particle.drawCircle(0, 0, particleIndex % 3 === 0 ? 2.2 : 1.4);
+            particle.endFill();
+            particle.x = (particleIndex - 3) * 11;
+            particle.y = -sprite.height * 0.54 - (particleIndex % 3) * 7;
+            node.addChild(particle);
+            ambientParticles.push({ graphic: particle, baseY: particle.y, phase: particleIndex * 0.82 });
+          }
+        }
+        if (definition.ambient) animatedObjects.push({ node, sprite, baseY: sprite.y, mode: definition.ambient, offset: index, baseRotation: sprite.rotation });
         scene.addChild(node);
       });
 
@@ -217,7 +257,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         text.y = -8;
         const bubble = new PIXI.Container();
         bubble.addChild(background, text);
-        bubble.y = -138;
+        bubble.y = -144;
         bubble.zIndex = 20;
         actor.node.addChild(bubble);
         actor.bubble = bubble;
@@ -248,7 +288,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         status.drawCircle(-nameText.width / 2 - 4, 0, 3);
         status.endFill();
         nameplate.addChild(plate, status, nameText);
-        nameplate.y = -119;
+        nameplate.y = -124;
         node.addChild(nameplate);
 
         const actor: Actor = {
@@ -263,6 +303,9 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           nextMoveAt: 1800 + index * 820,
           stepTravel: 0,
           bubbleExpiresAt: 0,
+          ambientSpeech: definition.ambientSpeech ?? [],
+          speechIndex: 0,
+          nextSpeechAt: 6200 + index * 3600,
         };
         if (!definition.player) {
           visual.eventMode = 'static';
@@ -354,7 +397,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
 
       let playerMoving = false;
       const layout = (immediate = false) => camera.layout(scene, app.screen, geometry.worldPoint(player.movement.position), playerMoving, immediate);
-      const onResize = () => layout(true);
+      const onResize = () => { renderAtmosphere(); layout(true); };
       app.renderer.on('resize', onResize);
       layout(true);
 
@@ -382,6 +425,11 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
             actor.nextMoveAt = time + 3400 + index * 620;
           }
           updateActorVisual(actor, actor.movement.update(deltaSeconds, blocked), deltaMs, false);
+          if (!actor.bubble && actor.ambientSpeech.length > 0 && time > actor.nextSpeechAt) {
+            showSpeech(actor, actor.ambientSpeech[actor.speechIndex % actor.ambientSpeech.length]);
+            actor.speechIndex += 1;
+            actor.nextSpeechAt = time + 26000 + index * 1150;
+          }
         });
 
         actors.forEach((actor) => {
@@ -391,9 +439,16 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
             actor.bubble = undefined;
           }
         });
-        animatedObjects.forEach(({ node, sprite, baseY, mode, offset }) => {
+        animatedObjects.forEach(({ node, sprite, baseY, mode, offset, baseRotation }) => {
           if (mode === 'glow') node.alpha = 0.92 + Math.sin(time / 460 + offset) * 0.08;
-          else sprite.y = baseY + Math.sin(time / 900 + offset) * 1.1;
+          else if (mode === 'float') sprite.y = baseY + Math.sin(time / 900 + offset) * 1.1;
+          else sprite.rotation = baseRotation + Math.sin(time / 1200 + offset) * 0.0035;
+        });
+        ambientParticles.forEach(({ graphic, baseY, phase }) => {
+          const cycle = (time / 1250 + phase) % 1;
+          graphic.y = baseY - cycle * 22;
+          graphic.alpha = Math.sin(cycle * Math.PI) * 0.82;
+          graphic.scale.set(0.7 + cycle * 0.5);
         });
         selectionRing.alpha = 0.64 + Math.sin(time / 190) * 0.22;
         for (let index = footsteps.length - 1; index >= 0; index -= 1) {
@@ -423,19 +478,19 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
   return (
     <div className="relative h-full w-full">
       <div ref={host} className="absolute inset-0 touch-none" />
-      <div className="absolute left-3 top-3 rounded-full border border-white/10 bg-slate-950/75 px-3 py-1.5 text-xs font-bold text-amber-50 backdrop-blur">
-        <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-400" />{room.ui.subtitle}
+      <div className="absolute left-3 top-2.5 rounded-full border border-amber-100/15 bg-[#102a31]/80 px-3 py-1.5 text-[11px] font-bold text-amber-50 shadow-lg backdrop-blur-md">
+        <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(74,222,128,.7)]" />{room.ui.subtitle}
       </div>
       {selection ? (
-        <section className="absolute bottom-24 left-3 right-3 z-20 rounded-2xl border border-white/15 bg-[#111a30]/95 p-4 text-white shadow-2xl backdrop-blur md:left-auto md:right-4 md:w-72">
+        <section className="absolute bottom-20 left-3 right-3 z-20 rounded-2xl border border-amber-100/15 bg-[#10252d]/95 p-4 text-white shadow-2xl backdrop-blur-md md:left-auto md:right-4 md:w-72">
           <button type="button" aria-label="Close interaction" onClick={() => setSelection(null)} className="float-right text-slate-400 hover:text-white">×</button>
-          <p className="text-xs font-bold uppercase tracking-widest text-amber-200">{selection.icon} Interaction</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">{selection.icon} Plaza action</p>
           <h3 className="mt-1 text-lg font-black">{selection.title}</h3>
           <p className="mt-1 text-sm text-slate-300">{selection.description}</p>
-          <button type="button" onClick={runAction} className="mt-3 w-full rounded-xl bg-amber-200 px-4 py-2.5 text-sm font-black text-slate-950 hover:bg-amber-100">{selection.actionLabel}</button>
+          <button type="button" onClick={runAction} className="mt-3 w-full rounded-xl bg-amber-200 px-4 py-2.5 text-sm font-black text-[#10252d] transition-colors hover:bg-amber-100">{selection.actionLabel}</button>
         </section>
       ) : null}
-      <div className="pointer-events-none absolute bottom-24 left-1/2 hidden -translate-x-1/2 rounded-full bg-slate-950/75 px-4 py-2 text-xs text-white/85 backdrop-blur sm:block">{room.ui.help}</div>
+      <div className="pointer-events-none absolute bottom-20 left-1/2 hidden -translate-x-1/2 rounded-full border border-white/10 bg-[#10252d]/72 px-4 py-2 text-[11px] font-semibold text-white/80 backdrop-blur sm:block">{room.ui.help}</div>
     </div>
   );
 }

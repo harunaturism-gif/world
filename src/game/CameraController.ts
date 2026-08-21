@@ -24,8 +24,8 @@ export class CameraController {
   private insets(screen: PIXI.Rectangle): Insets {
     const compact = screen.width < 640;
     return compact
-      ? { top: 70, right: 10, bottom: 88, left: 10 }
-      : { top: 72, right: screen.width > 980 ? 116 : 20, bottom: 92, left: 16 };
+      ? { top: 62, right: 8, bottom: 76, left: 8 }
+      : { top: 64, right: screen.width > 980 ? 88 : 18, bottom: 80, left: 14 };
   }
 
   private targetScale(screen: PIXI.Rectangle, insets: Insets) {
@@ -33,8 +33,8 @@ export class CameraController {
     const usableHeight = screen.height - insets.top - insets.bottom;
     const widthFit = usableWidth / this.bounds.width;
     const heightFit = usableHeight / this.bounds.height;
-    if (screen.width < 640) return clamp(heightFit * 0.94, 0.62, 0.84);
-    return clamp(Math.min(widthFit, heightFit) * 1.02, 0.8, 1.1);
+    if (screen.width < 640) return clamp(heightFit * 1.02, 0.76, 0.96);
+    return clamp(Math.min(widthFit, heightFit) * 1.05, 0.82, 1.12);
   }
 
   private clampOrigin(value: number, boundsStart: number, boundsSize: number, viewportStart: number, viewportSize: number, scale: number) {
