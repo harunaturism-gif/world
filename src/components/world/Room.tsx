@@ -109,7 +109,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
         <button aria-label="Human Gallery" onClick={() => onEnterRoom('human-gallery')} className="rounded-xl border border-white/10 bg-[#102a31]/82 p-2.5 text-pink-200 shadow-lg backdrop-blur transition-colors hover:bg-[#28515a]"><GalleryVerticalEnd size={17}/></button>
       </div>
 
-      {roomData && roomData.type === 'plaza' && <div className="hidden opacity-70 xl:block"><InWorldAd placementId="central-1" roomName={roomData.name} /></div>}
+      {roomData && roomData.type === 'plaza' && <div className="hidden opacity-55 2xl:block"><InWorldAd placementId="central-1" roomName={roomData.name} /></div>}
 
       {/* Chat Overlay */}
       <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-20 h-16 overflow-visible [&>div]:h-16">

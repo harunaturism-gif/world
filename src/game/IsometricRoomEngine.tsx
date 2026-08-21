@@ -37,6 +37,8 @@ interface Actor {
   ambientSpeech: string[];
   speechIndex: number;
   nextSpeechAt: number;
+  pose: 'stand' | 'sit';
+  depthBias: number;
 }
 
 interface AnimatedObject {
@@ -95,14 +97,14 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
     const renderAtmosphere = () => {
       const { width, height } = app.screen;
       atmosphere.clear();
-      atmosphere.beginFill(0x17343d);
+      atmosphere.beginFill(0x172f35);
       atmosphere.drawRect(0, 0, width, height);
       atmosphere.endFill();
-      atmosphere.beginFill(0x24524c, 0.72);
+      atmosphere.beginFill(0x594f57, 0.42);
       atmosphere.drawEllipse(-width * 0.08, height * 0.44, width * 0.56, height * 0.78);
       atmosphere.drawEllipse(width * 1.04, height * 0.58, width * 0.54, height * 0.86);
       atmosphere.endFill();
-      atmosphere.beginFill(0x315e54, 0.3);
+      atmosphere.beginFill(0x9b674f, 0.18);
       atmosphere.drawEllipse(width * 0.12, height * 0.96, width * 0.5, height * 0.27);
       atmosphere.drawEllipse(width * 0.82, height * 0.06, width * 0.42, height * 0.2);
       atmosphere.endFill();
@@ -133,7 +135,8 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
     void (async () => {
       const floorAssets = Object.values(room.floor.materials).flat();
       const avatarAssets = room.avatars.flatMap((avatar) => avatar.appearance.layers.map((layer) => layer.asset));
-      const urls = Array.from(new Set([...floorAssets, worldAssets.avatarShadow, ...avatarAssets, ...room.objects.map((object) => object.asset)]));
+      const wallAssets = room.geometry.walls.flatMap((wall) => wall.asset ? [wall.asset] : []);
+      const urls = Array.from(new Set([...floorAssets, ...wallAssets, worldAssets.avatarShadow, ...avatarAssets, ...room.objects.map((object) => object.asset)]));
       const textureEntries = await Promise.all(urls.map(async (url) => [url, await PIXI.Assets.load<PIXI.Texture>(url)] as const));
       if (disposed) return;
       const textures = new Map<string, PIXI.Texture>(textureEntries);
@@ -141,7 +144,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       onPresenceUpdate?.(room.avatars.length);
 
       renderFloor(scene, room, geometry, textureFor);
-      renderBorders(scene, geometry);
+      renderBorders(scene, geometry, textureFor);
 
       const tileCursor = new PIXI.Graphics();
       tileCursor.visible = false;
@@ -306,7 +309,16 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           ambientSpeech: definition.ambientSpeech ?? [],
           speechIndex: 0,
           nextSpeechAt: 6200 + index * 3600,
+          pose: definition.pose ?? 'stand',
+          depthBias: definition.depthBias ?? 1,
         };
+        if (actor.pose === 'sit') {
+          actor.patrol = [];
+          visual.scale.y = 0.82;
+          visual.y = 9;
+          shadow.alpha = 0.2;
+          nameplate.y = -111;
+        }
         if (!definition.player) {
           visual.eventMode = 'static';
           visual.cursor = 'pointer';
@@ -336,7 +348,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         const world = geometry.worldPoint(actor.movement.position);
         const screen = isoToScreen(world);
         actor.node.position.set(screen.x, screen.y);
-        actor.node.zIndex = isoDepth(world) + 1;
+        actor.node.zIndex = isoDepth(world) + actor.depthBias;
       };
       actors.forEach(placeActor);
       runtime.current = { say: (text) => showSpeech(player, text) };
@@ -355,6 +367,13 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       };
 
       const updateActorVisual = (actor: Actor, frame: MovementFrame, deltaMs: number, isPlayer: boolean) => {
+        if (actor.pose === 'sit') {
+          actor.visual.setFrame('south', 0);
+          actor.visual.y = 9 + Math.sin(app.ticker.lastTime / 780) * 0.25;
+          actor.shadow.alpha = 0.2;
+          placeActor(actor);
+          return;
+        }
         const animation = actor.animation.update(deltaMs, frame.moved, frame.screenDelta);
         actor.visual.setFrame(animation.direction, animation.frame);
         actor.visual.y = animation.motion === 'idle' ? Math.sin(animation.idlePhase) * 0.35 : 0;
@@ -484,7 +503,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       {selection ? (
         <section className="absolute bottom-20 left-3 right-3 z-20 rounded-2xl border border-amber-100/15 bg-[#10252d]/95 p-4 text-white shadow-2xl backdrop-blur-md md:left-auto md:right-4 md:w-72">
           <button type="button" aria-label="Close interaction" onClick={() => setSelection(null)} className="float-right text-slate-400 hover:text-white">×</button>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">{selection.icon} Plaza action</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">{selection.icon} Room action</p>
           <h3 className="mt-1 text-lg font-black">{selection.title}</h3>
           <p className="mt-1 text-sm text-slate-300">{selection.description}</p>
           <button type="button" onClick={runAction} className="mt-3 w-full rounded-xl bg-amber-200 px-4 py-2.5 text-sm font-black text-[#10252d] transition-colors hover:bg-amber-100">{selection.actionLabel}</button>

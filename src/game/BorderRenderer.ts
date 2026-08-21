@@ -40,7 +40,27 @@ function wallPalette(wall: RoomWallDefinition) {
   return 0x667d73;
 }
 
-function renderWall(scene: PIXI.Container, wall: RoomWallDefinition) {
+function renderWall(scene: PIXI.Container, wall: RoomWallDefinition, textureFor?: (url: string) => PIXI.Texture) {
+  if (wall.asset && textureFor) {
+    const steps = Math.max(1, Math.round(Math.max(Math.abs(wall.to.x - wall.from.x), Math.abs(wall.to.y - wall.from.y))));
+    for (let index = 0; index < steps; index += 1) {
+      const progress = (index + 0.5) / steps;
+      const point = {
+        x: wall.from.x + (wall.to.x - wall.from.x) * progress,
+        y: wall.from.y + (wall.to.y - wall.from.y) * progress,
+        z: wall.from.z ?? wall.to.z ?? 0,
+      };
+      const screen = isoToScreen(point);
+      const sprite = new PIXI.Sprite(textureFor(wall.asset));
+      sprite.anchor.set(0.5, 1);
+      sprite.width = wall.displayWidth ?? 132;
+      sprite.scale.y = sprite.scale.x;
+      sprite.position.set(screen.x, screen.y + 2);
+      sprite.zIndex = isoDepth(point) - 0.5;
+      scene.addChild(sprite);
+    }
+    return;
+  }
   const from = isoToScreen(wall.from);
   const to = isoToScreen(wall.to);
   const height = wall.height + Math.max(wall.from.z ?? 0, wall.to.z ?? 0) * ELEVATION_HEIGHT;
@@ -70,7 +90,7 @@ function renderWall(scene: PIXI.Container, wall: RoomWallDefinition) {
   }
 }
 
-export function renderBorders(scene: PIXI.Container, geometry: RoomGeometry) {
+export function renderBorders(scene: PIXI.Container, geometry: RoomGeometry, textureFor?: (url: string) => PIXI.Texture) {
   renderTerrainEdges(scene, geometry);
-  geometry.walls.forEach((wall) => renderWall(scene, wall));
+  geometry.walls.forEach((wall) => renderWall(scene, wall, textureFor));
 }

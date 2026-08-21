@@ -42,6 +42,8 @@ export interface RoomAvatarDefinition {
   player?: boolean;
   patrol?: IsoPoint[];
   ambientSpeech?: string[];
+  pose?: 'stand' | 'sit';
+  depthBias?: number;
 }
 
 export type RoomMaterial = 'stone' | 'path' | 'garden' | 'platform';
@@ -64,6 +66,8 @@ export interface RoomWallDefinition {
   thickness?: number;
   blocksMovement?: boolean;
   color?: number;
+  asset?: string;
+  displayWidth?: number;
 }
 
 export interface RoomExitDefinition {

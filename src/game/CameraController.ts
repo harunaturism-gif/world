@@ -33,8 +33,8 @@ export class CameraController {
     const usableHeight = screen.height - insets.top - insets.bottom;
     const widthFit = usableWidth / this.bounds.width;
     const heightFit = usableHeight / this.bounds.height;
-    if (screen.width < 640) return clamp(heightFit * 1.02, 0.76, 0.96);
-    return clamp(Math.min(widthFit, heightFit) * 1.05, 0.82, 1.12);
+    if (screen.width < 640) return clamp(heightFit * 1.2, 1.02, 1.22);
+    return clamp(Math.min(widthFit, heightFit) * 1.12, 0.94, 1.18);
   }
 
   private clampOrigin(value: number, boundsStart: number, boundsSize: number, viewportStart: number, viewportSize: number, scale: number) {
@@ -57,6 +57,12 @@ export class CameraController {
     this.scale += (targetScale - this.scale) * amount;
     let targetX = insets.left + viewportWidth / 2 - (this.bounds.x + this.bounds.width / 2) * this.scale;
     let targetY = insets.top + viewportHeight / 2 - (this.bounds.y + this.bounds.height / 2) * this.scale;
+
+    if (screen.width < 640 && this.mode === 'fit') {
+      const focusScreen = isoToScreen(focus);
+      targetX = insets.left + viewportWidth / 2 - focusScreen.x * this.scale;
+      targetY = insets.top + viewportHeight * 0.66 - focusScreen.y * this.scale;
+    }
 
     if (this.mode === 'follow') {
       const focusScreen = isoToScreen(focus);
