@@ -24,12 +24,16 @@ const heuristic = (a: GridPoint, b: GridPoint) => {
 function nearestWalkable(goal: GridPoint, isBlocked: (point: IsoPoint) => boolean): GridPoint | null {
   if (!isBlocked(toWorld(goal))) return goal;
   for (let radius = 1; radius <= 8; radius += 1) {
+    const candidates: GridPoint[] = [];
     for (let dx = -radius; dx <= radius; dx += 1) {
       for (let dy = -radius; dy <= radius; dy += 1) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
         const candidate = { x: goal.x + dx, y: goal.y + dy };
-        if (!isBlocked(toWorld(candidate))) return candidate;
+        if (!isBlocked(toWorld(candidate))) candidates.push(candidate);
       }
+    }
+    if (candidates.length > 0) {
+      return candidates.reduce((nearest, candidate) => heuristic(candidate, goal) < heuristic(nearest, goal) ? candidate : nearest);
     }
   }
   return null;

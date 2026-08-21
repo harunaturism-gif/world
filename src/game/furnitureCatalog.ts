@@ -32,13 +32,17 @@ export const furnitureCatalog = {
   marketStall: { id: 'market-stall', asset: `${root}/market-stall.png`, category: 'building', ...WORLD_SCALE.furniture.marketStall, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0] },
   fountain: { id: 'fountain', asset: `${root}/fountain.png`, category: 'landmark', ...WORLD_SCALE.furniture.fountain, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0], states: ['flowing'] },
   divider: { id: 'divider', asset: `${root}/divider.png`, category: 'prop', ...WORLD_SCALE.furniture.divider, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0, 2] },
+  djStage: { id: 'dj-stage', asset: `${root}/dj-stage.png`, category: 'landmark', ...WORLD_SCALE.furniture.djStage, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0.35], directions: [0], states: ['live', 'idle'] },
+  rentableStorefront: { id: 'rentable-storefront', asset: `${root}/rentable-storefront.png`, category: 'building', ...WORLD_SCALE.furniture.rentableStorefront, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0.2], directions: [0, 2], states: ['available', 'occupied'] },
+  digitalBillboard: { id: 'digital-billboard', asset: `${root}/digital-billboard.png`, category: 'world-item', ...WORLD_SCALE.furniture.digitalBillboard, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0, 2], states: ['community', 'campaign'] },
+  eventCanopy: { id: 'event-canopy', asset: `${root}/event-canopy.png`, category: 'building', ...WORLD_SCALE.furniture.eventCanopy, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0.45], directions: [0], states: ['open', 'reserved'] },
 } as const satisfies Record<string, FurnitureDefinition>;
 
 export function placeFurniture(
   catalogId: FurnitureId,
   id: string,
   position: IsoPoint,
-  options: { interaction?: RoomInteraction; interactionPoint?: IsoPoint; direction?: number; state?: string; ambient?: RoomObjectDefinition['ambient']; depthBias?: number } = {},
+  options: { interaction?: RoomInteraction; interactionPoint?: IsoPoint; direction?: number; state?: string; ambient?: RoomObjectDefinition['ambient']; depthBias?: number; spaceId?: string } = {},
 ): RoomObjectDefinition {
   const definition = furnitureCatalog[catalogId];
   const [width, height] = definition.footprint;

@@ -38,6 +38,20 @@ export interface RoomObjectDefinition {
   direction?: number;
   state?: string;
   depthBase?: IsoPoint;
+  spaceId?: string;
+}
+
+export type RoomSpaceKind = 'event-stage' | 'rentable-shop' | 'ad-placement' | 'customizable-lounge';
+
+export interface RoomSpaceDefinition {
+  id: string;
+  kind: RoomSpaceKind;
+  label: string;
+  anchor: IsoPoint;
+  bounds: { width: number; height: number };
+  status: 'active-demo' | 'future-rentable' | 'future-customizable';
+  allowedCatalogIds: string[];
+  editorTags: string[];
 }
 
 export interface RoomAvatarDefinition {
@@ -51,6 +65,7 @@ export interface RoomAvatarDefinition {
   ambientSpeech?: string[];
   pose?: 'stand' | 'sit';
   depthBias?: number;
+  activity?: string;
 }
 
 export type RoomMaterial = 'stone' | 'path' | 'garden' | 'platform';
@@ -108,6 +123,7 @@ export interface RoomDefinition {
   floor: RoomFloorDefinition;
   objects: RoomObjectDefinition[];
   avatars: RoomAvatarDefinition[];
+  spaces?: RoomSpaceDefinition[];
   ui: { subtitle: string; help: string };
 }
 

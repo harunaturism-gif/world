@@ -63,15 +63,15 @@ export class RoomUser {
     if (clearTarget) this.lastRequestedTarget = undefined;
   }
 
-  moveDirect(delta: IsoPoint, staticBlocked: (point: IsoPoint) => boolean, deltaMs: number): RoomUserFrame {
+  moveDirect(delta: IsoPoint, blocked: (point: IsoPoint) => boolean, deltaMs: number): RoomUserFrame {
     this.stop(true);
     const previous = this.iso.clone();
     const full = { x: previous.x + delta.x, y: previous.y + delta.y };
     const slideX = { x: full.x, y: previous.y };
     const slideY = { x: previous.x, y: full.y };
-    if (!staticBlocked(full)) this.iso.set(full.x, full.y);
-    else if (!staticBlocked(slideX)) this.iso.set(slideX.x, slideX.y);
-    else if (!staticBlocked(slideY)) this.iso.set(slideY.x, slideY.y);
+    if (!blocked(full)) this.iso.set(full.x, full.y);
+    else if (!blocked(slideX)) this.iso.set(slideX.x, slideX.y);
+    else if (!blocked(slideY)) this.iso.set(slideY.x, slideY.y);
     return this.frame(previous, deltaMs, false, false);
   }
 
@@ -90,13 +90,17 @@ export class RoomUser {
     const step = Math.min(this.speed * deltaSeconds, distance);
     const next = { x: this.iso.x + dx / distance * step, y: this.iso.y + dy / distance * step };
     if (staticBlocked(next)) {
-      this.stop(false);
-      this.retryAt = now + 80;
+      if (this.blockedSince === 0) {
+        this.blockedSince = now;
+        this.retryAt = now + 100;
+      }
       return this.frame(previous, deltaSeconds * 1000, false, true);
     }
     if (dynamicBlocked(next)) {
-      if (this.blockedSince === 0) this.blockedSince = now;
-      this.retryAt = now + (now - this.blockedSince > 700 ? 50 : 180);
+      if (this.blockedSince === 0) {
+        this.blockedSince = now;
+        this.retryAt = now + 150;
+      }
       return this.frame(previous, deltaSeconds * 1000, false, true);
     }
     this.blockedSince = 0;

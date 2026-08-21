@@ -52,7 +52,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
   return (
     <div className="absolute inset-0 flex flex-col bg-[#10252d]">
       {/* Header Overlay */}
-      <div className="pointer-events-auto absolute left-0 right-0 top-0 z-20 flex h-14 items-center justify-between border-b border-white/5 bg-gradient-to-b from-[#0b1b21]/92 to-[#0b1b21]/58 px-3 backdrop-blur-md sm:px-4">
+      <div className="pointer-events-auto absolute left-0 right-0 top-0 z-20 flex h-14 items-center justify-between border-b border-white/[0.06] bg-gradient-to-b from-[#07191f]/96 via-[#0b2026]/82 to-[#0b1b21]/38 px-3 shadow-[0_10px_32px_rgba(3,15,18,.16)] backdrop-blur-xl sm:px-4">
         <div className="flex items-center gap-3">
           <button
             onClick={onLeave}
@@ -66,7 +66,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
             </h2>
             <div className="mt-0.5 flex items-center gap-1 text-[10px] font-bold text-emerald-300">
               <Users size={12} />
-              {presenceCount} humans present
+              {presenceCount} humans present <span className="ml-1 text-amber-200/70">· live plaza</span>
             </div>
           </div>
         </div>
@@ -97,7 +97,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
         )}
 
         {toast && (
-          <div className="pointer-events-none absolute left-1/2 top-20 z-30 -translate-x-1/2 animate-in rounded-full border border-amber-100/15 bg-[#16343c]/94 px-4 py-2 text-center text-sm font-semibold text-amber-50 shadow-lg fade-in slide-in-from-top-4">
+          <div className="pointer-events-none absolute left-1/2 top-20 z-30 max-w-[86%] -translate-x-1/2 animate-in rounded-2xl border border-emerald-100/15 bg-[#0c2930]/96 px-4 py-2 text-center text-sm font-semibold text-amber-50 shadow-xl backdrop-blur-xl fade-in slide-in-from-top-4">
             {toast}
           </div>
         )}
@@ -112,7 +112,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
       {roomData && roomData.type === 'plaza' && <div className="hidden opacity-55 2xl:block"><InWorldAd placementId="central-1" roomName={roomData.name} /></div>}
 
       {/* Chat Overlay */}
-      <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-20 h-16 overflow-visible [&>div]:h-16">
+      <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-20 h-20 overflow-visible [&>div]:h-20">
         <Chat onSendMessage={handleSendChat} incomingMessage={incomingMessage} />
       </div>
 

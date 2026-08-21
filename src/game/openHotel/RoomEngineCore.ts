@@ -30,7 +30,7 @@ export class RoomEngineCore {
     return ((point.x + point.y) * 100 + (point.z ?? 0) * 160) * priority;
   }
 
-  isDynamicallyOccupied(point: IsoPoint, exceptId: string, radius = 0.34) {
+  isDynamicallyOccupied(point: IsoPoint, exceptId: string, radius = 0.3) {
     for (const [id, user] of this.users) {
       if (id === exceptId) continue;
       if (Math.hypot(user.iso.x - point.x, user.iso.y - point.y) < radius) return true;
@@ -41,7 +41,7 @@ export class RoomEngineCore {
   routeUser(id: string, requestedTarget: IsoPoint, avoidDynamic = true) {
     const user = this.users.get(id);
     if (!user) return false;
-    const blocked = (point: IsoPoint) => this.geometry.staticBlocked(point) || (avoidDynamic && this.isDynamicallyOccupied(point, id, 0.42));
+    const blocked = (point: IsoPoint) => this.geometry.staticBlocked(point) || (avoidDynamic && this.isDynamicallyOccupied(point, id, 0.36));
     let path = findPath(user.iso, requestedTarget, blocked, (from, to) => !blocked(to) && this.geometry.canTraverse(from, to));
     if (path.length === 0 && avoidDynamic) {
       path = findPath(user.iso, requestedTarget, (point) => this.geometry.staticBlocked(point), (from, to) => this.geometry.canTraverse(from, to));
@@ -51,7 +51,11 @@ export class RoomEngineCore {
   }
 
   moveUserDirect(id: string, delta: IsoPoint, deltaMs: number) {
-    return this.users.get(id)?.moveDirect(delta, (point) => this.geometry.staticBlocked(point), deltaMs);
+    return this.users.get(id)?.moveDirect(
+      delta,
+      (point) => this.geometry.staticBlocked(point) || this.isDynamicallyOccupied(point, id, 0.27),
+      deltaMs,
+    );
   }
 
   tickUser(id: string, deltaSeconds: number, now: number): RoomUserFrame | undefined {

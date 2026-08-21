@@ -239,6 +239,18 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
             ambientParticles.push({ graphic: particle, baseY: particle.y, phase: particleIndex * 0.82 });
           }
         }
+        if (definition.id === 'dj-stage') {
+          for (let particleIndex = 0; particleIndex < 10; particleIndex += 1) {
+            const particle = new PIXI.Graphics();
+            particle.beginFill(particleIndex % 2 === 0 ? 0x6fe7ef : 0xff806c, 0.86);
+            particle.drawRoundedRect(-2, -2, 4, 4, 1);
+            particle.endFill();
+            particle.x = -54 + particleIndex * 12;
+            particle.y = -sprite.height * 0.46 + (particleIndex % 3) * 5;
+            node.addChild(particle);
+            ambientParticles.push({ graphic: particle, baseY: particle.y, phase: particleIndex * 0.37 });
+          }
+        }
         if (definition.ambient) animatedObjects.push({ node, sprite, baseY: sprite.y, mode: definition.ambient, offset: index, baseRotation: sprite.rotation });
         scene.addChild(node);
       });
@@ -248,13 +260,13 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           actor.node.removeChild(actor.bubble);
           actor.bubble.destroy({ children: true });
         }
-        const text = new PIXI.Text(value.slice(0, 72), { fontFamily: 'Arial', fontSize: 13, fontWeight: 'bold', fill: 0x17213d, align: 'center', wordWrap: true, wordWrapWidth: 142, lineHeight: 17 });
-        const width = Math.max(54, Math.min(158, text.width + 22));
-        const height = text.height + 16;
+        const text = new PIXI.Text(value.slice(0, 72), { fontFamily: 'Arial', fontSize: 12.5, fontWeight: '600', fill: 0xf7fbfa, align: 'center', wordWrap: true, wordWrapWidth: 150, lineHeight: 17 });
+        const width = Math.max(58, Math.min(166, text.width + 24));
+        const height = text.height + 18;
         const background = new PIXI.Graphics();
-        background.beginFill(0xfffdf5, 0.98);
-        background.lineStyle(2, 0x17213d, 0.16);
-        background.drawRoundedRect(-width / 2, -height, width, height, 12);
+        background.beginFill(0x102b32, 0.96);
+        background.lineStyle(1.5, 0x9af3dc, 0.52);
+        background.drawRoundedRect(-width / 2, -height, width, height, 13);
         background.moveTo(-8, 0);
         background.lineTo(0, 8);
         background.lineTo(8, 0);
@@ -264,7 +276,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         text.y = -8;
         const bubble = new PIXI.Container();
         bubble.addChild(background, text);
-        bubble.y = -144;
+        bubble.y = -108;
         bubble.zIndex = 20;
         actor.node.addChild(bubble);
         actor.bubble = bubble;
@@ -280,7 +292,14 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         shadow.width = 76;
         shadow.scale.y = shadow.scale.x;
         shadow.alpha = 0.32;
-        node.addChild(shadow, visual);
+        if (definition.player) {
+          const playerHalo = new PIXI.Graphics();
+          playerHalo.lineStyle(2, 0xffd76a, 0.72);
+          playerHalo.beginFill(0xffd76a, 0.08);
+          playerHalo.drawEllipse(0, -2, 29, 10);
+          playerHalo.endFill();
+          node.addChild(shadow, playerHalo, visual);
+        } else node.addChild(shadow, visual);
 
         const nameText = new PIXI.Text(definition.name, { fontFamily: 'Arial', fontWeight: 'bold', fontSize: 12, fill: definition.player ? 0xffe38a : 0xffffff });
         nameText.anchor.set(0.5);
@@ -295,7 +314,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         status.drawCircle(-nameText.width / 2 - 4, 0, 3);
         status.endFill();
         nameplate.addChild(plate, status, nameText);
-        nameplate.y = -124;
+        nameplate.y = -93;
         node.addChild(nameplate);
 
         const actor: Actor = {
@@ -303,7 +322,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           node,
           visual,
           shadow,
-          user: core.addUser(definition.id, position, definition.player ? 2.75 : 1.25),
+          user: core.addUser(definition.id, position, definition.player ? 2.45 : 1.05),
           patrol: definition.patrol ?? [],
           waypointIndex: 0,
           nextMoveAt: 1800 + index * 820,
@@ -320,7 +339,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           visual.scale.y = 0.82;
           visual.y = 9;
           shadow.alpha = 0.2;
-          nameplate.y = -111;
+          nameplate.y = -82;
         }
         if (!definition.player) {
           visual.eventMode = 'static';
@@ -331,7 +350,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           visual.on('pointertap', (event) => {
             event.stopPropagation();
             placeSelectionRing(actor.user.iso);
-            setSelection({ sourceId: definition.id, title: definition.name, description: `${definition.name} is spending time in ${room.name}.`, actionLabel: 'View Profile', action: 'view-profile', targetId: definition.name, icon: '●' });
+            setSelection({ sourceId: definition.id, title: definition.name, description: definition.activity ?? `${definition.name} is spending time in ${room.name}.`, actionLabel: 'View Profile', action: 'view-profile', targetId: definition.name, icon: '●' });
             showSpeech(actor, `Hey! I'm ${definition.name}.`);
             onInteract(`${definition.name} waves hello.`);
             const dx = player.user.iso.x - actor.user.iso.x;
@@ -378,7 +397,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           return;
         }
         actor.visual.setFrame(frame.direction, frame.animationFrame);
-        actor.visual.y = frame.motion === 'idle' ? Math.sin(app.ticker.lastTime / 780) * 0.35 : 0;
+        actor.visual.y = frame.motion === 'idle' ? Math.sin(app.ticker.lastTime / 780) * 0.35 : Math.sin(app.ticker.lastTime / 82) * 0.7;
         actor.shadow.alpha = frame.motion === 'walk' ? 0.24 : 0.31;
         if (isPlayer && frame.moved > 0) {
           actor.stepTravel += frame.moved;
@@ -477,7 +496,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         const deltaSeconds = deltaMs / 1000;
         let dx = 0;
         let dy = 0;
-        const keyboardStep = 2.85 * deltaSeconds;
+        const keyboardStep = 2.45 * deltaSeconds;
         if (keys.has('w') || keys.has('arrowup')) { dx -= keyboardStep; dy -= keyboardStep; }
         if (keys.has('s') || keys.has('arrowdown')) { dx += keyboardStep; dy += keyboardStep; }
         if (keys.has('a') || keys.has('arrowleft')) { dx -= keyboardStep; dy += keyboardStep; }

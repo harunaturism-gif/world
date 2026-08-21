@@ -18,5 +18,9 @@ export const WORLD_SCALE = {
     marketStall: { footprint: [3, 2] as const, displayWidth: 188, height: 142 },
     fountain: { footprint: [3, 3] as const, displayWidth: 220, height: 166 },
     divider: { footprint: [2, 0.5] as const, displayWidth: 112, height: 62 },
+    djStage: { footprint: [4, 2.5] as const, displayWidth: 250, height: 152 },
+    rentableStorefront: { footprint: [3, 2] as const, displayWidth: 205, height: 146 },
+    digitalBillboard: { footprint: [3, 1] as const, displayWidth: 180, height: 148 },
+    eventCanopy: { footprint: [3, 3] as const, displayWidth: 220, height: 166 },
   },
 } as const;
