@@ -402,11 +402,29 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       scene.hitArea = new PIXI.Rectangle(roomBounds.x - 100, roomBounds.y - 100, roomBounds.width + 200, roomBounds.height + 200);
       let dragStart: PIXI.Point | null = null;
       let dragged = false;
+      const activePointers = new Map<number, PIXI.Point>();
+      let pinchDistance = 0;
       scene.on('pointerdown', (event) => {
+        activePointers.set(event.pointerId, event.global.clone());
+        if (activePointers.size === 2) {
+          const [first, second] = [...activePointers.values()];
+          pinchDistance = Math.hypot(second.x - first.x, second.y - first.y);
+          dragStart = null;
+          return;
+        }
         dragStart = event.global.clone();
         dragged = false;
       });
       scene.on('pointermove', (event) => {
+        if (activePointers.has(event.pointerId)) activePointers.set(event.pointerId, event.global.clone());
+        if (activePointers.size === 2) {
+          const [first, second] = [...activePointers.values()];
+          const distance = Math.hypot(second.x - first.x, second.y - first.y);
+          if (pinchDistance > 0) camera.zoomBy((distance - pinchDistance) / 280);
+          pinchDistance = distance;
+          dragged = true;
+          return;
+        }
         if (dragStart) {
           const next = event.global;
           const dx = next.x - dragStart.x;
@@ -422,9 +440,14 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         if (!insideFloor(target)) { tileCursor.visible = false; return; }
         drawTileCursor(target, blocked(target));
       });
-      scene.on('pointerup', () => { dragStart = null; });
-      scene.on('pointerupoutside', () => { dragStart = null; });
-      scene.on('pointerout', () => { tileCursor.visible = false; dragStart = null; });
+      const releasePointer = (event: PIXI.FederatedPointerEvent) => {
+        activePointers.delete(event.pointerId);
+        pinchDistance = 0;
+        dragStart = null;
+      };
+      scene.on('pointerup', releasePointer);
+      scene.on('pointerupoutside', releasePointer);
+      scene.on('pointerout', (event) => { tileCursor.visible = false; releasePointer(event); });
       scene.on('pointertap', (event) => {
         if (dragged) { dragged = false; return; }
         const target = snapToTile(screenToIso(event.getLocalPosition(scene)));
