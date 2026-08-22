@@ -1,4 +1,5 @@
 import type { IsoPoint } from '../isometric';
+import type { AvatarDirection } from '../AvatarAnimationController';
 import { findPath } from '../pathfinding';
 import { RoomUser, type RoomUserFrame } from './RoomUser';
 
@@ -41,6 +42,7 @@ export class RoomEngineCore {
   routeUser(id: string, requestedTarget: IsoPoint, avoidDynamic = true) {
     const user = this.users.get(id);
     if (!user) return false;
+    if (user.pose === 'sit' || user.pose === 'interacting') user.setPose('stand');
     const blocked = (point: IsoPoint) => this.geometry.staticBlocked(point) || (avoidDynamic && this.isDynamicallyOccupied(point, id, 0.36));
     let path = findPath(user.iso, requestedTarget, blocked, (from, to) => !blocked(to) && this.geometry.canTraverse(from, to));
     if (path.length === 0 && avoidDynamic) {
@@ -59,6 +61,20 @@ export class RoomEngineCore {
       (point) => this.geometry.elevationAt(point),
       deltaMs,
     );
+  }
+
+  setUserSeat(id: string, position: IsoPoint, facing: AvatarDirection) {
+    const user = this.users.get(id);
+    if (!user) return false;
+    user.setSeat(position, facing, (point) => this.geometry.elevationAt(point));
+    return true;
+  }
+
+  setUserPose(id: string, pose: RoomUser['pose'], facing?: AvatarDirection) {
+    const user = this.users.get(id);
+    if (!user) return false;
+    user.setPose(pose, facing);
+    return true;
   }
 
   tickUser(id: string, deltaSeconds: number, now: number): RoomUserFrame | undefined {

@@ -14,6 +14,8 @@ export interface RoomUserFrame {
   waiting: boolean;
 }
 
+export type RoomUserPose = 'stand' | 'walk' | 'sit' | 'interacting';
+
 const directionFromVector = (x: number, y: number, fallback: AvatarDirection): AvatarDirection => {
   if (Math.abs(x) < 0.0001 && Math.abs(y) < 0.0001) return fallback;
   if (Math.abs(x) > Math.abs(y) * 0.72) return x < 0 ? 'west' : 'east';
@@ -32,6 +34,7 @@ export class RoomUser {
   readonly animation = new AnimationTimeline(110).add([0, 1, 2, 3]).buildFrames();
   direction: AvatarDirection = 'south';
   motion: AvatarMotion = 'idle';
+  pose: RoomUserPose = 'stand';
   destination: Vector3;
   roomId: string;
   private waypoints: Vector3[] = [];
@@ -64,6 +67,7 @@ export class RoomUser {
   }
 
   moveDirect(delta: IsoPoint, canTraverse: (from: IsoPoint, to: IsoPoint) => boolean, elevationAt: (point: IsoPoint) => number, deltaMs: number): RoomUserFrame {
+    if (this.pose === 'sit' || this.pose === 'interacting') this.setPose('stand');
     this.stop(true);
     const previous = this.iso.clone();
     const full = { x: previous.x + delta.x, y: previous.y + delta.y };
@@ -75,8 +79,21 @@ export class RoomUser {
     return this.frame(previous, deltaMs, false, false);
   }
 
+  setPose(pose: RoomUserPose, facing?: AvatarDirection) {
+    this.pose = pose;
+    if (facing) this.direction = facing;
+    if (pose === 'sit' || pose === 'interacting') this.stop();
+  }
+
+  setSeat(position: IsoPoint, facing: AvatarDirection, elevationAt: (point: IsoPoint) => number) {
+    this.stop();
+    this.iso.set(position.x, position.y, elevationAt(position));
+    this.setPose('sit', facing);
+  }
+
   tick(deltaSeconds: number, now: number, staticBlocked: (point: IsoPoint) => boolean, dynamicBlocked: (point: IsoPoint) => boolean, elevationAt: (point: IsoPoint) => number): RoomUserFrame {
     const previous = this.iso.clone();
+    if (this.pose === 'sit' || this.pose === 'interacting') return this.frame(previous, deltaSeconds * 1000, true, false);
     const waypoint = this.waypoints[0];
     if (!waypoint) return this.frame(previous, deltaSeconds * 1000, true, false);
     const dx = waypoint.x - this.iso.x;

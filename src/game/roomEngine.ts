@@ -1,4 +1,5 @@
 import type { CollisionShape, IsoPoint } from './isometric';
+import type { AvatarDirection } from './AvatarAnimationController';
 
 export type RoomObjectCategory = 'building' | 'furniture' | 'prop' | 'vegetation' | 'landmark' | 'world-item';
 export type InteractionAction = 'enter-room' | 'view-profile' | 'inspect' | 'sit' | 'use';
@@ -18,6 +19,16 @@ export interface RoomInteraction {
   action: InteractionAction;
   targetId?: string;
   icon?: string;
+  effect?: 'fountain-wish' | 'join-event' | 'read-events' | 'view-placement';
+  facing?: AvatarDirection;
+}
+
+export interface RoomSeatDefinition {
+  seatPosition: IsoPoint;
+  approachPosition: IsoPoint;
+  facing: 'north' | 'south' | 'east' | 'west';
+  depthBias?: number;
+  visualOffset?: number;
 }
 
 export interface RoomObjectDefinition {
@@ -41,6 +52,7 @@ export interface RoomObjectDefinition {
   spaceId?: string;
   content?: { eyebrow?: string; title: string; detail?: string; accent?: number };
   contentStates?: Record<string, { eyebrow?: string; title: string; detail?: string; accent?: number }>;
+  seat?: RoomSeatDefinition;
 }
 
 export type RoomSpaceKind = 'event-stage' | 'rentable-shop' | 'ad-placement' | 'customizable-lounge';

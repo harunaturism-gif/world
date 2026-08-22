@@ -10,7 +10,7 @@ import { RoomEngineCore } from './openHotel/RoomEngineCore';
 import type { RoomUserFrame } from './openHotel/RoomUser';
 import type { RoomUser } from './openHotel/RoomUser';
 import { RoomGeometry } from './RoomGeometry';
-import type { PlayerSpeech, RoomAvatarDefinition, RoomDefinition, RoomSelection } from './roomEngine';
+import type { PlayerSpeech, RoomAvatarDefinition, RoomDefinition, RoomObjectDefinition, RoomSelection } from './roomEngine';
 import { worldAssets } from './worldManifest';
 import { DevCatalogInspector } from './DevCatalogInspector';
 
@@ -42,6 +42,9 @@ interface Actor {
   depthBias: number;
   nameplate: PIXI.Container;
   emphasisUntil: number;
+  seatId?: string;
+  seatVisualOffset: number;
+  standingDepthBias: number;
 }
 
 interface AnimatedObject {
@@ -55,7 +58,7 @@ interface AnimatedObject {
 
 interface Footstep { graphic: PIXI.Graphics; life: number }
 interface AmbientParticle { graphic: PIXI.Graphics; baseY: number; phase: number }
-interface SceneRuntime { say: (text: string) => void; zoomBy: (amount: number) => void; recenter: () => void }
+interface SceneRuntime { say: (text: string) => void; execute: (selection: RoomSelection) => void; zoomBy: (amount: number) => void; recenter: () => void }
 
 const snapToTile = (point: IsoPoint): IsoPoint => ({ x: Math.round(point.x * 2) / 2, y: Math.round(point.y * 2) / 2 });
 
@@ -66,15 +69,10 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
 
   const runAction = () => {
     if (!selection) return;
-    if (selection.action === 'enter-room' && selection.targetId) {
-      onInteract(`Entering ${selection.title}…`);
-      runtime.current?.say(`Let's go to ${selection.title}.`);
-      window.setTimeout(() => onEnterRoom?.(selection.targetId!), 260);
-    } else if (selection.action === 'view-profile' && selection.targetId) {
+    if (selection.action === 'view-profile' && selection.targetId) {
       onOpenProfile?.(selection.targetId);
     } else {
-      onInteract(`${selection.actionLabel}: ${selection.title}`);
-      runtime.current?.say(selection.action === 'sit' ? 'Taking a quick break.' : selection.actionLabel);
+      runtime.current?.execute(selection);
     }
   };
 
@@ -121,9 +119,12 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
     const keys = new Set<string>();
     const footsteps: Footstep[] = [];
     const ambientParticles: AmbientParticle[] = [];
+    const fountainBurstParticles: { graphic: PIXI.Graphics; velocityX: number; velocityY: number; life: number }[] = [];
     const camera = new CameraController();
     const geometry = new RoomGeometry(room.geometry);
     const collisionObjects = [...room.objects, ...(room.contextObjects ?? []).filter((object) => object.collision)];
+    const seatOccupants = new Map<string, string>();
+    let pendingInteraction: { selection: RoomSelection; object: RoomObjectDefinition } | null = null;
     const core = new RoomEngineCore(room.id, {
       staticBlocked: (point) => geometry.isBlocked(point, collisionObjects),
       canTraverse: (from, to) => geometry.canTraverse(from, to, collisionObjects),
@@ -200,10 +201,20 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
 
       const insideFloor = (point: IsoPoint) => Boolean(geometry.cellAt(point));
       const blocked = (point: IsoPoint) => geometry.isBlocked(point, collisionObjects);
+      const releaseSeat = (actor: Actor) => {
+        if (!actor.seatId) return;
+        if (seatOccupants.get(actor.seatId) === actor.id) seatOccupants.delete(actor.seatId);
+        actor.seatId = undefined;
+        actor.seatVisualOffset = 0;
+        actor.depthBias = actor.standingDepthBias;
+      };
       const routeActor = (actor: Actor, target: IsoPoint) => {
+        if (actor.user.pose === 'sit' || actor.user.pose === 'interacting') releaseSeat(actor);
         return core.routeUser(actor.id, snapToTile(target), true);
       };
       const animatedObjects: AnimatedObject[] = [];
+      const interactiveObjects = new Map<string, RoomObjectDefinition>();
+      const objectNodes = new Map<string, PIXI.Container>();
 
       const renderObjects = [...(room.contextObjects ?? []), ...room.objects];
       renderObjects.forEach((definition, index) => {
@@ -219,6 +230,8 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         node.position.set(screen.x, screen.y);
         node.zIndex = isoDepth(geometry.worldPoint(definition.depthBase ?? definition.position)) + (definition.depthBias ?? 0);
         node.name = definition.id;
+        objectNodes.set(definition.id, node);
+        if (definition.interaction) interactiveObjects.set(definition.id, definition);
 
         const content = definition.content ?? (definition.state ? definition.contentStates?.[definition.state] : undefined);
         if (content) {
@@ -261,7 +274,6 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
             placeSelectionRing(definition.position);
             setSelection({ ...definition.interaction!, sourceId: definition.id });
             onInteract(definition.interaction!.description);
-            if (definition.interactionPoint) routeActor(player, definition.interactionPoint);
           });
         }
 
@@ -374,11 +386,25 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           depthBias: definition.depthBias ?? 1,
           nameplate,
           emphasisUntil: definition.player ? Number.POSITIVE_INFINITY : 0,
+          seatVisualOffset: 0,
+          standingDepthBias: definition.depthBias ?? 1,
         };
         if (actor.pose === 'sit') {
           actor.patrol = [];
+          const seat = room.objects
+            .filter((object) => object.seat && !seatOccupants.has(object.id))
+            .sort((first, second) => Math.hypot(first.position.x - definition.position.x, first.position.y - definition.position.y) - Math.hypot(second.position.x - definition.position.x, second.position.y - definition.position.y))[0];
+          if (seat?.seat) {
+            seatOccupants.set(seat.id, actor.id);
+            actor.seatId = seat.id;
+            actor.seatVisualOffset = seat.seat.visualOffset ?? 0;
+            actor.depthBias = seat.seat.depthBias ?? actor.standingDepthBias;
+            core.setUserSeat(actor.id, seat.seat.seatPosition, seat.seat.facing);
+          } else {
+            core.setUserPose(actor.id, 'sit');
+          }
           visual.scale.y = 0.82;
-          visual.y = 9;
+          visual.y = actor.seatVisualOffset;
           shadow.alpha = 0.2;
           nameplate.y = -82;
         }
@@ -415,8 +441,6 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         actor.node.zIndex = isoDepth(world) + actor.depthBias;
       };
       actors.forEach(placeActor);
-      runtime.current = { say: (text) => showSpeech(player, text), zoomBy: (amount) => camera.zoomBy(amount), recenter: () => camera.recenter() };
-
       const spawnFootstep = (position: IsoPoint) => {
         const world = geometry.worldPoint(position);
         const screen = isoToScreen(world);
@@ -431,15 +455,17 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       };
 
       const updateActorVisual = (actor: Actor, frame: RoomUserFrame, isPlayer: boolean) => {
-        if (actor.pose === 'sit') {
-          actor.visual.setFrame('south', 0);
-          actor.visual.y = 9 + Math.sin(app.ticker.lastTime / 780) * 0.25;
+        if (actor.user.pose === 'sit') {
+          actor.visual.setFrame(actor.user.direction, 0);
+          actor.visual.scale.y = 0.82;
+          actor.visual.y = actor.seatVisualOffset;
           actor.shadow.alpha = 0.2;
           placeActor(actor);
           return;
         }
+        actor.visual.scale.y = actor.visual.scale.x;
         actor.visual.setFrame(frame.direction, frame.animationFrame);
-        actor.visual.y = frame.motion === 'idle' ? Math.sin(app.ticker.lastTime / 780) * 0.35 : Math.sin(app.ticker.lastTime / 82) * 0.7;
+        actor.visual.y = 0;
         actor.shadow.alpha = frame.motion === 'walk' ? 0.24 : 0.31;
         if (isPlayer && frame.moved > 0) {
           actor.stepTravel += frame.moved;
@@ -450,6 +476,89 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         }
         placeActor(actor);
       };
+
+      const completeInteraction = () => {
+        if (!pendingInteraction) return;
+        const { selection: interaction, object } = pendingInteraction;
+        pendingInteraction = null;
+        if (interaction.action === 'enter-room' && interaction.targetId) {
+          onInteract(`Entering ${interaction.title}...`);
+          showSpeech(player, `Let's go to ${interaction.title}.`);
+          window.setTimeout(() => onEnterRoom?.(interaction.targetId!), 260);
+          return;
+        }
+        if (interaction.action === 'sit' && object.seat) {
+          const occupant = seatOccupants.get(object.id);
+          if (occupant && occupant !== player.id) {
+            onInteract(`${interaction.title} is already occupied.`);
+            return;
+          }
+          if (player.seatId && player.seatId !== object.id) releaseSeat(player);
+          seatOccupants.set(object.id, player.id);
+          player.seatId = object.id;
+          player.seatVisualOffset = object.seat.visualOffset ?? 0;
+          player.depthBias = object.seat.depthBias ?? player.standingDepthBias;
+          core.setUserSeat(player.id, object.seat.seatPosition, object.seat.facing);
+          placeSelectionRing(object.seat.seatPosition);
+          onInteract(`You sit on the ${object.catalogId ?? 'seat'}.`);
+          showSpeech(player, 'Taking a quick break.');
+          setSelection({ ...interaction, actionLabel: 'Stand up', description: 'You are sitting here. Stand up before moving through the Plaza.' });
+          return;
+        }
+        core.setUserPose(player.id, 'interacting', interaction.facing);
+        if (interaction.effect === 'fountain-wish') {
+          for (let index = 0; index < 14; index += 1) {
+            const particle = new PIXI.Graphics();
+            particle.beginFill(index % 2 === 0 ? 0xa9efff : 0xffefad, 0.9);
+            particle.drawCircle(0, 0, 2.4);
+            particle.endFill();
+            particle.position.set(0, -40);
+            objectNodes.get(object.id)?.addChild(particle);
+            fountainBurstParticles.push({ graphic: particle, velocityX: (index - 6.5) * 0.12, velocityY: -0.65 - (index % 4) * 0.08, life: 1 });
+          }
+          onInteract('Your wish ripples across the fountain.');
+          showSpeech(player, 'I made a wish.');
+        } else if (interaction.effect === 'join-event') {
+          onInteract('You joined the Central Sessions crowd.');
+          showSpeech(player, 'This set is incredible.');
+        } else if (interaction.effect === 'read-events') {
+          onInteract('Tonight: Central Sessions live, creator meetup next, gallery walk at eight.');
+          showSpeech(player, 'Checking what is on tonight.');
+        } else if (interaction.effect === 'view-placement') {
+          onInteract('East Plaza Screen is showing Central Sessions live.');
+          showSpeech(player, 'The Plaza screen is live.');
+        } else {
+          onInteract(`${interaction.actionLabel}: ${interaction.title}`);
+          showSpeech(player, interaction.actionLabel);
+        }
+        window.setTimeout(() => {
+          if (player.user.pose === 'interacting') core.setUserPose(player.id, 'stand');
+        }, 850);
+      };
+      runtime.current = { say: (text) => showSpeech(player, text), execute: (interaction) => {
+        const object = interactiveObjects.get(interaction.sourceId);
+        if (!object) return;
+        if (interaction.action === 'sit' && object.seat && seatOccupants.get(object.id) === player.id && player.user.pose === 'sit') {
+          releaseSeat(player);
+          core.setUserPose(player.id, 'stand');
+          setSelection(null);
+          onInteract('You stand up.');
+          return;
+        }
+        if (interaction.action === 'sit' && object.seat && seatOccupants.has(object.id) && seatOccupants.get(object.id) !== player.id) {
+          onInteract(`${interaction.title} is already occupied.`);
+          return;
+        }
+        pendingInteraction = { selection: interaction, object };
+        const target = object.seat?.approachPosition ?? object.interactionPoint;
+        if (!target) { completeInteraction(); return; }
+        if (!routeActor(player, target)) {
+          pendingInteraction = null;
+          onInteract('That interaction is not reachable right now.');
+          return;
+        }
+        if (Math.hypot(player.user.iso.x - target.x, player.user.iso.y - target.y) < 0.6) completeInteraction();
+      }, zoomBy: (amount) => camera.zoomBy(amount), recenter: () => camera.recenter() };
 
       scene.eventMode = 'static';
       const floorBounds = geometry.projectedFloorBounds();
@@ -512,6 +621,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         if (dragged) { dragged = false; return; }
         const target = snapToTile(screenToIso(event.getLocalPosition(scene)));
         if (!blocked(target) && routeActor(player, target)) {
+          pendingInteraction = null;
           placeSelectionRing(target);
           setSelection(null);
         } else {
@@ -544,12 +654,17 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         if (keys.has('d') || keys.has('arrowright')) { dx += keyboardStep; dy -= keyboardStep; }
         const inputMagnitude = Math.hypot(dx, dy);
         if (inputMagnitude > keyboardStep) { dx = dx / inputMagnitude * keyboardStep; dy = dy / inputMagnitude * keyboardStep; }
+        if ((dx || dy) && player.user.pose === 'sit') releaseSeat(player);
         const playerFrame = dx || dy
           ? core.moveUserDirect(player.id, { x: dx, y: dy }, deltaMs)
           : core.tickUser(player.id, deltaSeconds, time);
         if (!playerFrame) return;
         playerMoving = playerFrame.moving;
         updateActorVisual(player, playerFrame, true);
+        if (pendingInteraction) {
+          const target = pendingInteraction.object.seat?.approachPosition ?? pendingInteraction.object.interactionPoint;
+          if (target && Math.hypot(player.user.iso.x - target.x, player.user.iso.y - target.y) < 0.6) completeInteraction();
+        }
 
         residents.forEach((actor, index) => {
           if (!actor.user.moving && actor.patrol.length > 1 && time > actor.nextMoveAt) {
@@ -588,6 +703,18 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           graphic.alpha = Math.sin(cycle * Math.PI) * 0.82;
           graphic.scale.set(0.7 + cycle * 0.5);
         });
+        for (let index = fountainBurstParticles.length - 1; index >= 0; index -= 1) {
+          const burst = fountainBurstParticles[index];
+          burst.life -= deltaMs / 700;
+          burst.graphic.x += burst.velocityX * deltaMs;
+          burst.graphic.y += burst.velocityY * deltaMs;
+          burst.velocityY += 0.0018 * deltaMs;
+          burst.graphic.alpha = Math.max(0, burst.life);
+          if (burst.life <= 0) {
+            burst.graphic.destroy();
+            fountainBurstParticles.splice(index, 1);
+          }
+        }
         selectionRing.alpha = 0.64 + Math.sin(time / 190) * 0.22;
         for (let index = footsteps.length - 1; index >= 0; index -= 1) {
           const step = footsteps[index];
@@ -613,7 +740,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       hostElement.replaceChildren();
       app.destroy(true, { children: true });
     };
-  }, [onInteract, onOpenProfile, onPresenceUpdate, room]);
+  }, [onEnterRoom, onInteract, onOpenProfile, onPresenceUpdate, room]);
 
   return (
     <div className="relative h-full w-full">

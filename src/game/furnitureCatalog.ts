@@ -1,5 +1,5 @@
 import type { IsoPoint } from './isometric';
-import type { RoomEditorCategory, RoomInteraction, RoomObjectCategory, RoomObjectDefinition } from './roomEngine';
+import type { RoomEditorCategory, RoomInteraction, RoomObjectCategory, RoomObjectDefinition, RoomSeatDefinition } from './roomEngine';
 import { WORLD_SCALE } from './worldScale';
 
 export type FurnitureId = keyof typeof furnitureCatalog;
@@ -17,17 +17,18 @@ export interface FurnitureDefinition {
   directions: readonly number[];
   states?: readonly string[];
   editorCategory: RoomEditorCategory;
+  seat?: { seatOffset: readonly [number, number]; approachOffset: readonly [number, number]; facing: RoomSeatDefinition['facing']; depthBias?: number; visualOffset?: number };
 }
 
 const root = '/assets/world/open-hotel-port/furniture';
 
 export const furnitureCatalog = {
-  bench: { id: 'bench', asset: `${root}/bench.png`, category: 'furniture', editorCategory: 'seating', ...WORLD_SCALE.furniture.bench, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0, 2], states: ['empty', 'occupied'] },
-  chair: { id: 'chair', asset: `${root}/chair.png`, category: 'furniture', editorCategory: 'seating', ...WORLD_SCALE.furniture.chair, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0, 2], states: ['empty', 'occupied'] },
-  stool: { id: 'stool', asset: `${root}/stool.png`, category: 'furniture', editorCategory: 'seating', ...WORLD_SCALE.furniture.stool, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0, 2], states: ['empty', 'occupied'] },
+  bench: { id: 'bench', asset: `${root}/bench.png`, category: 'furniture', editorCategory: 'seating', ...WORLD_SCALE.furniture.bench, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0, 2], states: ['empty', 'occupied'], seat: { seatOffset: [0, 0.38], approachOffset: [0, 1.05], facing: 'north', depthBias: -0.4, visualOffset: 8 } },
+  chair: { id: 'chair', asset: `${root}/chair.png`, category: 'furniture', editorCategory: 'seating', ...WORLD_SCALE.furniture.chair, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0, 2], states: ['empty', 'occupied'], seat: { seatOffset: [0, 0.28], approachOffset: [0, 0.9], facing: 'north', depthBias: -0.35, visualOffset: 8 } },
+  stool: { id: 'stool', asset: `${root}/stool.png`, category: 'furniture', editorCategory: 'seating', ...WORLD_SCALE.furniture.stool, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0, 2], states: ['empty', 'occupied'], seat: { seatOffset: [0, 0.25], approachOffset: [0, 0.8], facing: 'north', depthBias: -0.3, visualOffset: 8 } },
   table: { id: 'table', asset: `${root}/table.png`, category: 'furniture', editorCategory: 'tables', ...WORLD_SCALE.furniture.table, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0] },
   sideTable: { id: 'side-table', asset: `${root}/side-table.png`, category: 'furniture', editorCategory: 'tables', ...WORLD_SCALE.furniture.sideTable, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0] },
-  sofa: { id: 'sofa', asset: `${root}/sofa.png`, category: 'furniture', editorCategory: 'seating', ...WORLD_SCALE.furniture.sofa, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0, 2], states: ['empty', 'occupied'] },
+  sofa: { id: 'sofa', asset: `${root}/sofa.png`, category: 'furniture', editorCategory: 'seating', ...WORLD_SCALE.furniture.sofa, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0, 2], states: ['empty', 'occupied'], seat: { seatOffset: [0, 0.4], approachOffset: [0, 1.05], facing: 'north', depthBias: -0.4, visualOffset: 8 } },
   lamp: { id: 'lamp', asset: `${root}/lamp.png`, category: 'prop', editorCategory: 'lighting', ...WORLD_SCALE.furniture.lamp, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0], states: ['on'] },
   eventLight: { id: 'event-light', asset: `${root}/event-light.png`, category: 'prop', editorCategory: 'lighting', ...WORLD_SCALE.furniture.eventLight, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0], states: ['on', 'off'] },
   plant: { id: 'plant', asset: `${root}/plant.png`, category: 'vegetation', editorCategory: 'plants', ...WORLD_SCALE.furniture.plant, anchor: [0.5, 1], collision: 'solid', depthBase: [0, 0], directions: [0] },
@@ -55,6 +56,7 @@ export function placeFurniture(
 ): RoomObjectDefinition {
   const definition = furnitureCatalog[catalogId];
   const [width, height] = definition.footprint;
+  const seat = 'seat' in definition ? definition.seat : undefined;
   return {
     id,
     catalogId,
@@ -69,6 +71,13 @@ export function placeFurniture(
     state: options.state ?? ('states' in definition ? definition.states[0] : undefined),
     collision: definition.collision === 'solid' ? { kind: 'rect', x: position.x, y: position.y, width: width * 0.86, height: height * 0.86 } : undefined,
     depthBase: { x: position.x + definition.depthBase[0], y: position.y + definition.depthBase[1] },
+    seat: seat ? {
+      seatPosition: { x: position.x + seat.seatOffset[0], y: position.y + seat.seatOffset[1] },
+      approachPosition: { x: position.x + seat.approachOffset[0], y: position.y + seat.approachOffset[1] },
+      facing: seat.facing,
+      depthBias: seat.depthBias,
+      visualOffset: seat.visualOffset,
+    } : undefined,
     ...options,
   };
 }
