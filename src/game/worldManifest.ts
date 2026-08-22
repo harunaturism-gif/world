@@ -4,6 +4,7 @@ import type { AvatarAppearance, RoomAvatarDefinition, RoomCellDefinition, RoomDe
 const groundRoot = '/assets/world/ground';
 const socialRoot = '/assets/world/social-room/characters';
 const characterRoot = '/assets/world/characters';
+const seatedAtlas = `${characterRoot}/human-world-seated-atlas.svg`;
 
 export const worldAssets = {
   ground: `${groundRoot}/plaza-stone-a.svg`, groundVariant: `${groundRoot}/plaza-stone-b.svg`,
@@ -13,9 +14,9 @@ export const worldAssets = {
   alexVariant: `${characterRoot}/alex-avatar-atlas.png`, mayaVariant: `${characterRoot}/maya-avatar-atlas.png`, sofiaVariant: `${characterRoot}/sofia-avatar-atlas.png`, playerVariant: `${characterRoot}/human-world-avatar-atlas.png`,
 } as const;
 
-const atlasAppearance = (asset: string, renderWidth = 80): AvatarAppearance => ({ frameColumns: 4, frameRows: 4, renderWidth, layers: [{ slot: 'body', asset }] });
+const atlasAppearance = (asset: string, renderWidth = 80, sitAsset?: string): AvatarAppearance => ({ frameColumns: 4, frameRows: 4, renderWidth, layers: [{ slot: 'body', asset }], sitAsset });
 const appearances = {
-  player: atlasAppearance(worldAssets.playerAtlas, 78), alex: atlasAppearance(worldAssets.alexAtlas), maya: atlasAppearance(worldAssets.mayaAtlas), sofia: atlasAppearance(worldAssets.sofiaAtlas),
+  player: atlasAppearance(worldAssets.playerAtlas, 78, seatedAtlas), alex: atlasAppearance(worldAssets.alexAtlas), maya: atlasAppearance(worldAssets.mayaAtlas), sofia: atlasAppearance(worldAssets.sofiaAtlas),
   alexAlt: atlasAppearance(worldAssets.alexVariant, 78), mayaAlt: atlasAppearance(worldAssets.mayaVariant, 78), sofiaAlt: atlasAppearance(worldAssets.sofiaVariant, 78), creator: atlasAppearance(worldAssets.playerVariant, 78),
 };
 const palettes = {

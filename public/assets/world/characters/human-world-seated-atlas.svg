@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <g id="sit-front">
+      <ellipse cx="128" cy="218" rx="61" ry="15" fill="#101d27" opacity=".32"/>
+      <path d="M73 111c0-32 25-58 55-58s55 26 55 58v39c0 30-25 51-55 51s-55-21-55-51z" fill="#315db3" stroke="#172735" stroke-width="7"/>
+      <circle cx="128" cy="57" r="39" fill="#f2b78d" stroke="#172735" stroke-width="7"/>
+      <path d="M89 54c2-35 22-55 44-55 31 0 49 22 51 57l-17-16-10 16-16-19-17 18z" fill="#8f3322" stroke="#172735" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M77 124 46 165l21 13 31-29M179 124l31 41-21 13-31-29" fill="#315db3" stroke="#172735" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M86 169c14-15 29-20 42-20s28 5 42 20l-13 28-29-8-29 8z" fill="#16454d" stroke="#172735" stroke-width="7"/>
+      <path d="M94 190c-5 17 4 30 25 30h9v-25l-19-12zM162 190c5 17-4 30-25 30h-9v-25l19-12z" fill="#e6a13c" stroke="#172735" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M113 133h30" stroke="#f1bd55" stroke-width="6" stroke-linecap="round"/>
+    </g>
+    <g id="sit-side">
+      <ellipse cx="128" cy="218" rx="61" ry="15" fill="#101d27" opacity=".32"/>
+      <path d="M78 111c0-32 23-58 52-58s51 25 51 57v40c0 29-24 51-53 51s-50-22-50-51z" fill="#315db3" stroke="#172735" stroke-width="7"/>
+      <circle cx="133" cy="57" r="39" fill="#f2b78d" stroke="#172735" stroke-width="7"/>
+      <path d="M95 53c4-35 24-54 46-54 27 0 47 20 48 53l-28-14-12 14-18-18z" fill="#8f3322" stroke="#172735" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M86 125 47 159l17 17 45-25M183 125l35 31-18 17-45-23" fill="#315db3" stroke="#172735" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M88 169c17-15 37-18 56-12l25 22-18 20-32-12-34 8z" fill="#16454d" stroke="#172735" stroke-width="7"/>
+      <path d="M128 191c16 0 33 8 43 22l-17 12-36-20z" fill="#e6a13c" stroke="#172735" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M112 133h29" stroke="#f1bd55" stroke-width="6" stroke-linecap="round"/>
+    </g>
+  </defs>
+  <g transform="translate(0 0)"><use href="#sit-front"/></g><g transform="translate(256 0)"><use href="#sit-front" transform="translate(0 2)"/></g><g transform="translate(512 0)"><use href="#sit-front" transform="translate(0 -1)"/></g><g transform="translate(768 0)"><use href="#sit-front" transform="translate(0 1)"/></g>
+  <g transform="translate(0 256)"><use href="#sit-side"/></g><g transform="translate(256 256)"><use href="#sit-side" transform="translate(0 2)"/></g><g transform="translate(512 256)"><use href="#sit-side" transform="translate(0 -1)"/></g><g transform="translate(768 256)"><use href="#sit-side" transform="translate(0 1)"/></g>
+  <g transform="translate(0 512)"><use href="#sit-side" transform="translate(0 0) scale(-1 1) translate(-256 0)"/></g><g transform="translate(256 512)"><use href="#sit-side" transform="translate(0 2) scale(-1 1) translate(-256 0)"/></g><g transform="translate(512 512)"><use href="#sit-side" transform="translate(0 -1) scale(-1 1) translate(-256 0)"/></g><g transform="translate(768 512)"><use href="#sit-side" transform="translate(0 1) scale(-1 1) translate(-256 0)"/></g>
+  <g transform="translate(0 768)"><use href="#sit-front" transform="rotate(180 128 128)"/></g><g transform="translate(256 768)"><use href="#sit-front" transform="rotate(180 128 128) translate(0 2)"/></g><g transform="translate(512 768)"><use href="#sit-front" transform="rotate(180 128 128) translate(0 -1)"/></g><g transform="translate(768 768)"><use href="#sit-front" transform="rotate(180 128 128) translate(0 1)"/></g>
+</svg>

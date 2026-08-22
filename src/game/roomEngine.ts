@@ -10,6 +10,7 @@ export interface AvatarAppearance {
   frameRows: number;
   renderWidth: number;
   layers: { slot: AvatarLayerSlot; asset: string; tint?: number; alpha?: number }[];
+  sitAsset?: string;
 }
 
 export interface RoomInteraction {
@@ -102,6 +103,7 @@ export interface RoomAvatarDefinition {
   patrol?: IsoPoint[];
   ambientSpeech?: string[];
   pose?: 'stand' | 'sit';
+  seatId?: string;
   depthBias?: number;
   activity?: string;
 }

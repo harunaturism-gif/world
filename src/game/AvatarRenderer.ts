@@ -23,6 +23,7 @@ export interface AvatarTextureResolver { (url: string): PIXI.Texture }
 /** Layer-aware sprite renderer. The first collection uses a baked base layer for frame coherence; future part atlases can occupy every supported slot. */
 export class AvatarRenderer extends PIXI.Container {
   private readonly frameSets: { slot: AvatarLayerSlot; sprite: PIXI.Sprite; frames: PIXI.Texture[][] }[] = [];
+  private readonly sitFrameSets: { sprite: PIXI.Sprite; frames: PIXI.Texture[][] }[] = [];
 
   constructor(appearance: AvatarAppearance, resolveTexture: AvatarTextureResolver) {
     super();
@@ -37,6 +38,17 @@ export class AvatarRenderer extends PIXI.Container {
       sprite.alpha = layer.alpha ?? 1;
       this.addChild(sprite);
       this.frameSets.push({ slot: layer.slot, sprite, frames });
+      if (appearance.sitAsset) {
+        const sitTexture = resolveTexture(appearance.sitAsset);
+        const sitFrames = sliceAtlas(sitTexture, appearance.frameColumns, appearance.frameRows);
+        const sitSprite = new PIXI.Sprite(sitFrames[0]?.[0] ?? PIXI.Texture.EMPTY);
+        sitSprite.anchor.set(0.5, 1);
+        sitSprite.width = appearance.renderWidth;
+        sitSprite.scale.y = sitSprite.scale.x;
+        sitSprite.visible = false;
+        this.addChild(sitSprite);
+        this.sitFrameSets.push({ sprite: sitSprite, frames: sitFrames });
+      }
     }
     this.setFrame('south', 0);
   }
@@ -47,5 +59,15 @@ export class AvatarRenderer extends PIXI.Container {
       const rowFrames = layer.frames[row] ?? layer.frames[0];
       layer.sprite.texture = rowFrames?.[frame % rowFrames.length] ?? PIXI.Texture.EMPTY;
     }
+  }
+
+  setPose(pose: 'stand' | 'sit', direction: AvatarDirection, frame = 0) {
+    const sitting = pose === 'sit' && this.sitFrameSets.length > 0;
+    this.frameSets.forEach(({ sprite }) => { sprite.visible = !sitting; });
+    this.sitFrameSets.forEach(({ sprite, frames }) => {
+      sprite.visible = sitting;
+      if (sitting) sprite.texture = (frames[directionRows[direction]] ?? frames[0])?.[frame % ((frames[0]?.length ?? 1))] ?? PIXI.Texture.EMPTY;
+    });
+    if (!sitting) this.setFrame(direction, frame);
   }
 }

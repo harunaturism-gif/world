@@ -145,7 +145,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
 
     void (async () => {
       const floorAssets = Object.values(room.floor.materials).flat();
-      const avatarAssets = room.avatars.flatMap((avatar) => avatar.appearance.layers.map((layer) => layer.asset));
+      const avatarAssets = room.avatars.flatMap((avatar) => [...avatar.appearance.layers.map((layer) => layer.asset), ...(avatar.appearance.sitAsset ? [avatar.appearance.sitAsset] : [])]);
       const wallAssets = room.geometry.walls.flatMap((wall) => wall.asset ? [wall.asset] : []);
       const urls = Array.from(new Set([...floorAssets, ...wallAssets, worldAssets.avatarShadow, ...avatarAssets, ...(room.contextObjects ?? []).map((object) => object.asset), ...room.objects.map((object) => object.asset)]));
       const textureEntries = await Promise.all(urls.map(async (url) => [url, await PIXI.Assets.load<PIXI.Texture>(url)] as const));
@@ -215,6 +215,8 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       const animatedObjects: AnimatedObject[] = [];
       const interactiveObjects = new Map<string, RoomObjectDefinition>();
       const objectNodes = new Map<string, PIXI.Container>();
+      const foregroundLayer = new PIXI.Container();
+      foregroundLayer.sortableChildren = true;
 
       const renderObjects = [...(room.contextObjects ?? []), ...room.objects];
       renderObjects.forEach((definition, index) => {
@@ -232,6 +234,17 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         node.name = definition.id;
         objectNodes.set(definition.id, node);
         if (definition.interaction) interactiveObjects.set(definition.id, definition);
+        if (definition.seat) {
+          const foregroundTexture = new PIXI.Texture(textureFor(definition.asset).baseTexture, new PIXI.Rectangle(0, textureFor(definition.asset).baseTexture.height * 0.58, textureFor(definition.asset).baseTexture.width, textureFor(definition.asset).baseTexture.height * 0.42));
+          const foregroundSprite = new PIXI.Sprite(foregroundTexture);
+          foregroundSprite.anchor.set(0.5, 1);
+          foregroundSprite.width = definition.displayWidth;
+          foregroundSprite.scale.y = foregroundSprite.scale.x;
+          if (definition.direction === 2) foregroundSprite.scale.x *= -1;
+          foregroundSprite.position.set(screen.x, screen.y);
+          foregroundSprite.zIndex = isoDepth(geometry.worldPoint(definition.depthBase ?? definition.position)) + (definition.depthBias ?? 0) + 0.1;
+          foregroundLayer.addChild(foregroundSprite);
+        }
 
         const content = definition.content ?? (definition.state ? definition.contentStates?.[definition.state] : undefined);
         if (content) {
@@ -393,6 +406,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           actor.patrol = [];
           const seat = room.objects
             .filter((object) => object.seat && !seatOccupants.has(object.id))
+            .filter((object) => !definition.seatId || object.id === definition.seatId)
             .sort((first, second) => Math.hypot(first.position.x - definition.position.x, first.position.y - definition.position.y) - Math.hypot(second.position.x - definition.position.x, second.position.y - definition.position.y))[0];
           if (seat?.seat) {
             seatOccupants.set(seat.id, actor.id);
@@ -403,7 +417,6 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           } else {
             core.setUserPose(actor.id, 'sit');
           }
-          visual.scale.y = 0.82;
           visual.y = actor.seatVisualOffset;
           shadow.alpha = 0.2;
           nameplate.y = -82;
@@ -441,6 +454,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         actor.node.zIndex = isoDepth(world) + actor.depthBias;
       };
       actors.forEach(placeActor);
+      scene.addChild(foregroundLayer);
       const spawnFootstep = (position: IsoPoint) => {
         const world = geometry.worldPoint(position);
         const screen = isoToScreen(world);
@@ -456,15 +470,13 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
 
       const updateActorVisual = (actor: Actor, frame: RoomUserFrame, isPlayer: boolean) => {
         if (actor.user.pose === 'sit') {
-          actor.visual.setFrame(actor.user.direction, 0);
-          actor.visual.scale.y = 0.82;
+          actor.visual.setPose('sit', actor.user.direction, 0);
           actor.visual.y = actor.seatVisualOffset;
           actor.shadow.alpha = 0.2;
           placeActor(actor);
           return;
         }
-        actor.visual.scale.y = actor.visual.scale.x;
-        actor.visual.setFrame(frame.direction, frame.animationFrame);
+        actor.visual.setPose('stand', frame.direction, frame.animationFrame);
         actor.visual.y = 0;
         actor.shadow.alpha = frame.motion === 'walk' ? 0.24 : 0.31;
         if (isPlayer && frame.moved > 0) {
