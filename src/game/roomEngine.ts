@@ -39,9 +39,12 @@ export interface RoomObjectDefinition {
   state?: string;
   depthBase?: IsoPoint;
   spaceId?: string;
+  content?: { eyebrow?: string; title: string; detail?: string; accent?: number };
+  contentStates?: Record<string, { eyebrow?: string; title: string; detail?: string; accent?: number }>;
 }
 
 export type RoomSpaceKind = 'event-stage' | 'rentable-shop' | 'ad-placement' | 'customizable-lounge';
+export type RoomEditorCategory = 'seating' | 'tables' | 'plants' | 'lighting' | 'barriers' | 'commercial' | 'event' | 'social';
 
 export interface RoomSpaceDefinition {
   id: string;
@@ -51,7 +54,30 @@ export interface RoomSpaceDefinition {
   bounds: { width: number; height: number };
   status: 'active-demo' | 'future-rentable' | 'future-customizable';
   allowedCatalogIds: string[];
+  allowedCategories?: RoomEditorCategory[];
   editorTags: string[];
+  ownerId: string | null;
+  tenantId: string | null;
+  floorMaterial: RoomMaterial;
+  lifecycle: 'draft' | 'published';
+}
+
+export interface RoomEventDefinition {
+  id: string;
+  title: string;
+  status: 'live' | 'scheduled' | 'ended';
+  host: string;
+  anchor: IsoPoint;
+  objectIds: string[];
+  music: { mode: 'replaceable-placeholder'; source: string | null };
+}
+
+export interface RoomDistrictDefinition {
+  id: string;
+  label: string;
+  detail: string;
+  anchor: IsoPoint;
+  material: RoomMaterial;
 }
 
 export interface RoomAvatarDefinition {
@@ -68,7 +94,7 @@ export interface RoomAvatarDefinition {
   activity?: string;
 }
 
-export type RoomMaterial = 'stone' | 'path' | 'garden' | 'platform';
+export type RoomMaterial = 'stone' | 'avenue' | 'fountain' | 'event' | 'shop' | 'cafe' | 'garden' | 'community' | 'entrance';
 export type RoomBorderKind = 'curb' | 'fence' | 'wall';
 
 export interface RoomCellDefinition {
@@ -122,8 +148,19 @@ export interface RoomDefinition {
   geometry: RoomGeometryDefinition;
   floor: RoomFloorDefinition;
   objects: RoomObjectDefinition[];
+  contextObjects?: RoomObjectDefinition[];
   avatars: RoomAvatarDefinition[];
   spaces?: RoomSpaceDefinition[];
+  events?: RoomEventDefinition[];
+  districts?: RoomDistrictDefinition[];
+  studio: {
+    formatVersion: 1;
+    spaceId: string;
+    ownerId: string | null;
+    tenantId: string | null;
+    lifecycle: 'draft' | 'published';
+    allowedCategories: RoomEditorCategory[];
+  };
   ui: { subtitle: string; help: string };
 }
 

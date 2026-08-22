@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { LocateFixed, Minus, Plus } from 'lucide-react';
 import * as PIXI from 'pixi.js';
 import { AvatarRenderer } from './AvatarRenderer';
 import { renderBorders } from './BorderRenderer';
@@ -11,6 +12,7 @@ import type { RoomUser } from './openHotel/RoomUser';
 import { RoomGeometry } from './RoomGeometry';
 import type { PlayerSpeech, RoomAvatarDefinition, RoomDefinition, RoomSelection } from './roomEngine';
 import { worldAssets } from './worldManifest';
+import { DevCatalogInspector } from './DevCatalogInspector';
 
 interface Props {
   room: RoomDefinition;
@@ -38,6 +40,8 @@ interface Actor {
   nextSpeechAt: number;
   pose: 'stand' | 'sit';
   depthBias: number;
+  nameplate: PIXI.Container;
+  emphasisUntil: number;
 }
 
 interface AnimatedObject {
@@ -141,7 +145,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       const floorAssets = Object.values(room.floor.materials).flat();
       const avatarAssets = room.avatars.flatMap((avatar) => avatar.appearance.layers.map((layer) => layer.asset));
       const wallAssets = room.geometry.walls.flatMap((wall) => wall.asset ? [wall.asset] : []);
-      const urls = Array.from(new Set([...floorAssets, ...wallAssets, worldAssets.avatarShadow, ...avatarAssets, ...room.objects.map((object) => object.asset)]));
+      const urls = Array.from(new Set([...floorAssets, ...wallAssets, worldAssets.avatarShadow, ...avatarAssets, ...(room.contextObjects ?? []).map((object) => object.asset), ...room.objects.map((object) => object.asset)]));
       const textureEntries = await Promise.all(urls.map(async (url) => [url, await PIXI.Assets.load<PIXI.Texture>(url)] as const));
       if (disposed) return;
       const textures = new Map<string, PIXI.Texture>(textureEntries);
@@ -150,6 +154,17 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
 
       renderFloor(scene, room, geometry, textureFor);
       renderBorders(scene, geometry, textureFor);
+
+      room.districts?.forEach((district) => {
+        const world = geometry.worldPoint(district.anchor);
+        const screen = isoToScreen(world);
+        const label = new PIXI.Text(`${district.label}\n${district.detail}`, { fontFamily: 'Arial', fontSize: 8.5, fontWeight: 'bold', fill: 0xffedb0, align: 'center', letterSpacing: 1.2, lineHeight: 12 });
+        label.anchor.set(.5);
+        label.position.set(screen.x, screen.y);
+        label.alpha = .62;
+        label.zIndex = isoDepth(world) - 3;
+        scene.addChild(label);
+      });
 
       const tileCursor = new PIXI.Graphics();
       tileCursor.visible = false;
@@ -189,7 +204,8 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       };
       const animatedObjects: AnimatedObject[] = [];
 
-      room.objects.forEach((definition, index) => {
+      const renderObjects = [...(room.contextObjects ?? []), ...room.objects];
+      renderObjects.forEach((definition, index) => {
         const node = new PIXI.Container();
         const sprite = new PIXI.Sprite(textureFor(definition.asset));
         const world = geometry.worldPoint(definition.position);
@@ -202,6 +218,27 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         node.position.set(screen.x, screen.y);
         node.zIndex = isoDepth(geometry.worldPoint(definition.depthBase ?? definition.position)) + (definition.depthBias ?? 0);
         node.name = definition.id;
+
+        const content = definition.content ?? (definition.state ? definition.contentStates?.[definition.state] : undefined);
+        if (content) {
+          const contentNode = new PIXI.Container();
+          const isLiveStage = definition.id === 'dj-stage';
+          const panelWidth = isLiveStage ? 150 : 132;
+          const panel = new PIXI.Graphics();
+          panel.beginFill(0x10252d, 0.94);
+          panel.lineStyle(1.5, content.accent ?? 0xf3cf78, 0.72);
+          panel.drawRoundedRect(-panelWidth / 2, -26, panelWidth, 52, 9);
+          panel.endFill();
+          const eyebrow = new PIXI.Text(content.eyebrow ?? '', { fontFamily: 'Arial', fontSize: 7.5, fontWeight: 'bold', letterSpacing: 1.2, fill: content.accent ?? 0xf3cf78 });
+          const title = new PIXI.Text(content.title, { fontFamily: 'Arial', fontSize: isLiveStage ? 13 : 11, fontWeight: 'bold', fill: 0xffffff });
+          const detail = new PIXI.Text(content.detail ?? '', { fontFamily: 'Arial', fontSize: 7.5, fontWeight: 'bold', fill: 0xd8e8e3 });
+          eyebrow.anchor.set(.5); eyebrow.y = -15;
+          title.anchor.set(.5); title.y = 0;
+          detail.anchor.set(.5); detail.y = 15;
+          contentNode.addChild(panel, eyebrow, title, detail);
+          contentNode.y = isLiveStage ? -sprite.height - 28 : -sprite.height * .58;
+          node.addChild(contentNode);
+        }
 
         if (definition.interaction) {
           const badge = new PIXI.Graphics();
@@ -284,6 +321,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       };
 
       const makeActor = (definition: RoomAvatarDefinition, index: number): Actor => {
+        const createdAt = app.ticker.lastTime;
         const position = definition.player ? geometry.spawn : definition.position;
         const node = new PIXI.Container();
         const shadow = new PIXI.Sprite(textureFor(worldAssets.avatarShadow));
@@ -325,14 +363,16 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           user: core.addUser(definition.id, position, definition.player ? 2.45 : 1.05),
           patrol: definition.patrol ?? [],
           waypointIndex: 0,
-          nextMoveAt: 1800 + index * 820,
+          nextMoveAt: createdAt + 1800 + index * 820,
           stepTravel: 0,
           bubbleExpiresAt: 0,
           ambientSpeech: definition.ambientSpeech ?? [],
           speechIndex: 0,
-          nextSpeechAt: 6200 + index * 3600,
+          nextSpeechAt: createdAt + 6200 + index * 3600,
           pose: definition.pose ?? 'stand',
           depthBias: definition.depthBias ?? 1,
+          nameplate,
+          emphasisUntil: definition.player ? Number.POSITIVE_INFINITY : 0,
         };
         if (actor.pose === 'sit') {
           actor.patrol = [];
@@ -345,13 +385,14 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           visual.eventMode = 'static';
           visual.cursor = 'pointer';
           visual.hitArea = new PIXI.Rectangle(-42, -118, 84, 120);
-          visual.on('pointerover', () => node.scale.set(1.035));
+          visual.on('pointerover', () => { node.scale.set(1.035); actor.nameplate.alpha = 1; actor.emphasisUntil = app.ticker.lastTime + 900; });
           visual.on('pointerout', () => node.scale.set(1));
           visual.on('pointertap', (event) => {
             event.stopPropagation();
             placeSelectionRing(actor.user.iso);
             setSelection({ sourceId: definition.id, title: definition.name, description: definition.activity ?? `${definition.name} is spending time in ${room.name}.`, actionLabel: 'View Profile', action: 'view-profile', targetId: definition.name, icon: '●' });
             showSpeech(actor, `Hey! I'm ${definition.name}.`);
+            actor.emphasisUntil = app.ticker.lastTime + 4200;
             onInteract(`${definition.name} waves hello.`);
             const dx = player.user.iso.x - actor.user.iso.x;
             const dy = player.user.iso.y - actor.user.iso.y;
@@ -411,11 +452,10 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
 
       scene.eventMode = 'static';
       const floorBounds = geometry.projectedFloorBounds();
-      const visualBounds = scene.getLocalBounds();
-      const minX = Math.min(floorBounds.x, visualBounds.x) - 36;
-      const minY = Math.min(floorBounds.y, visualBounds.y) - 30;
-      const maxX = Math.max(floorBounds.x + floorBounds.width, visualBounds.x + visualBounds.width) + 36;
-      const maxY = Math.max(floorBounds.y + floorBounds.height, visualBounds.y + visualBounds.height) + 30;
+      const minX = floorBounds.x - 120;
+      const minY = floorBounds.y - 150;
+      const maxX = floorBounds.x + floorBounds.width + 120;
+      const maxY = floorBounds.y + floorBounds.height + 130;
       const roomBounds = new PIXI.Rectangle(minX, minY, maxX - minX, maxY - minY);
       camera.configure(roomBounds, geometry.spawn);
       scene.hitArea = new PIXI.Rectangle(roomBounds.x - 100, roomBounds.y - 100, roomBounds.width + 200, roomBounds.height + 200);
@@ -501,6 +541,8 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         if (keys.has('s') || keys.has('arrowdown')) { dx += keyboardStep; dy += keyboardStep; }
         if (keys.has('a') || keys.has('arrowleft')) { dx -= keyboardStep; dy += keyboardStep; }
         if (keys.has('d') || keys.has('arrowright')) { dx += keyboardStep; dy -= keyboardStep; }
+        const inputMagnitude = Math.hypot(dx, dy);
+        if (inputMagnitude > keyboardStep) { dx = dx / inputMagnitude * keyboardStep; dy = dy / inputMagnitude * keyboardStep; }
         const playerFrame = dx || dy
           ? core.moveUserDirect(player.id, { x: dx, y: dy }, deltaMs)
           : core.tickUser(player.id, deltaSeconds, time);
@@ -516,6 +558,10 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           }
           const residentFrame = core.tickUser(actor.id, deltaSeconds, time);
           if (residentFrame) updateActorVisual(actor, residentFrame, false);
+          const distance = Math.hypot(actor.user.iso.x - player.user.iso.x, actor.user.iso.y - player.user.iso.y);
+          const proximityAlpha = distance <= 3 ? .9 : distance <= 6 ? .58 : distance <= 9 ? .3 : .14;
+          const targetNameplateAlpha = time < actor.emphasisUntil || actor.bubble ? 1 : proximityAlpha;
+          actor.nameplate.alpha += (targetNameplateAlpha - actor.nameplate.alpha) * .12;
           if (!actor.bubble && actor.ambientSpeech.length > 0 && time > actor.nextSpeechAt) {
             showSpeech(actor, actor.ambientSpeech[actor.speechIndex % actor.ambientSpeech.length]);
             actor.speechIndex += 1;
@@ -571,14 +617,15 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
   return (
     <div className="relative h-full w-full">
       <div ref={host} className="absolute inset-0 touch-none" />
-      <div className="absolute left-3 top-2.5 rounded-full border border-amber-100/15 bg-[#102a31]/80 px-3 py-1.5 text-[11px] font-bold text-amber-50 shadow-lg backdrop-blur-md">
+      <div className="absolute left-3 top-16 z-10 rounded-full border border-amber-100/15 bg-[#102a31]/82 px-3 py-1.5 text-[10px] font-bold text-amber-50 shadow-lg backdrop-blur-md sm:text-[11px]">
         <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(74,222,128,.7)]" />{room.ui.subtitle}
       </div>
-      <div className="absolute right-3 top-3 z-20 flex gap-1 rounded-xl border border-white/10 bg-[#10252d]/85 p-1 shadow-lg backdrop-blur">
-        <button type="button" aria-label="Zoom out" onClick={() => runtime.current?.zoomBy(-0.1)} className="h-8 w-8 rounded-lg text-lg font-black text-amber-100 hover:bg-white/10">−</button>
-        <button type="button" aria-label="Recenter camera" onClick={() => runtime.current?.recenter()} className="h-8 rounded-lg px-2 text-[10px] font-black uppercase text-white/80 hover:bg-white/10">Focus</button>
-        <button type="button" aria-label="Zoom in" onClick={() => runtime.current?.zoomBy(0.1)} className="h-8 w-8 rounded-lg text-lg font-black text-amber-100 hover:bg-white/10">+</button>
+      <div className="absolute right-3 top-3 z-20 flex gap-0.5 rounded-full border border-white/10 bg-[#10252d]/72 p-1 shadow-lg backdrop-blur transition-opacity md:opacity-70 md:hover:opacity-100">
+        <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => runtime.current?.zoomBy(-0.1)} className="grid h-8 w-8 place-items-center rounded-full text-amber-100 hover:bg-white/10"><Minus size={15} /></button>
+        <button type="button" aria-label="Recenter camera" title="Recenter" onClick={() => runtime.current?.recenter()} className="grid h-8 w-8 place-items-center rounded-full text-white/80 hover:bg-white/10"><LocateFixed size={15} /></button>
+        <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => runtime.current?.zoomBy(0.1)} className="grid h-8 w-8 place-items-center rounded-full text-amber-100 hover:bg-white/10"><Plus size={15} /></button>
       </div>
+      {import.meta.env.DEV ? <DevCatalogInspector room={room} /> : null}
       {selection ? (
         <section className="absolute bottom-20 left-3 right-3 z-20 rounded-2xl border border-amber-100/15 bg-[#10252d]/95 p-4 text-white shadow-2xl backdrop-blur-md md:left-auto md:right-4 md:w-72">
           <button type="button" aria-label="Close interaction" onClick={() => setSelection(null)} className="float-right text-slate-400 hover:text-white">×</button>

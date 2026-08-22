@@ -117,10 +117,15 @@ export class RoomUser {
     const dy = this.iso.y - previous.y;
     const moved = Math.hypot(dx, dy);
     const screenDelta = { x: dx - dy, y: dx + dy };
+    const wasWalking = this.motion === 'walk';
     if (moved > 0.0001) {
       this.motion = 'walk';
       this.direction = directionFromVector(screenDelta.x, screenDelta.y, this.direction);
-    } else this.motion = 'idle';
+      if (!wasWalking) this.animation.reset();
+    } else {
+      this.motion = 'idle';
+      if (wasWalking) this.animation.reset();
+    }
     const timelineFrame = this.motion === 'walk' ? this.animation.update(deltaMs)[0] ?? 0 : 0;
     return { moved, moving: moved > 0.0001, arrived: arrived && !this.moving, screenDelta, direction: this.direction, motion: this.motion, animationFrame: timelineFrame, waiting };
   }

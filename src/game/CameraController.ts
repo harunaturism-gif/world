@@ -35,7 +35,7 @@ export class CameraController {
     const insets = this.insets(screen);
     const viewportWidth = screen.width - insets.left - insets.right;
     const viewportHeight = screen.height - insets.top - insets.bottom;
-    const targetScale = (screen.width < 640 ? 0.92 : 1) * this.zoom;
+    const targetScale = (screen.width < 640 ? 0.76 : 0.86) * this.zoom;
     const amount = immediate ? 1 : 0.1;
     this.scale += (targetScale - this.scale) * amount;
 
@@ -44,14 +44,15 @@ export class CameraController {
     const projectedY = focusScreen.y * this.scale + this.y;
     const deadLeft = insets.left + viewportWidth * 0.34;
     const deadRight = insets.left + viewportWidth * 0.66;
-    const deadTop = insets.top + viewportHeight * 0.32;
-    const deadBottom = insets.top + viewportHeight * 0.68;
+    const mobile = screen.width < 640;
+    const deadTop = insets.top + viewportHeight * (mobile ? 0.24 : 0.3);
+    const deadBottom = insets.top + viewportHeight * (mobile ? 0.82 : 0.72);
     let targetX = this.x;
     let targetY = this.y;
 
     if (immediate && this.x === 0 && this.y === 0) {
       targetX = insets.left + viewportWidth / 2 - focusScreen.x * this.scale;
-      targetY = insets.top + viewportHeight * 0.58 - focusScreen.y * this.scale;
+      targetY = insets.top + viewportHeight * (mobile ? 0.74 : 0.64) - focusScreen.y * this.scale;
     } else if (moving || Math.abs(this.manualPanX) < 1 || Math.abs(this.manualPanY) < 1) {
       targetX += projectedX < deadLeft ? deadLeft - projectedX : projectedX > deadRight ? deadRight - projectedX : 0;
       targetY += projectedY < deadTop ? deadTop - projectedY : projectedY > deadBottom ? deadBottom - projectedY : 0;

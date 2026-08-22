@@ -112,7 +112,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
       {roomData && roomData.type === 'plaza' && <div className="hidden opacity-55 2xl:block"><InWorldAd placementId="central-1" roomName={roomData.name} /></div>}
 
       {/* Chat Overlay */}
-      <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-20 h-20 overflow-visible [&>div]:h-20">
+      <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-20 h-16 overflow-visible [&>div]:h-16">
         <Chat onSendMessage={handleSendChat} incomingMessage={incomingMessage} />
       </div>
 
