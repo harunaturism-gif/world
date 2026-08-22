@@ -7,10 +7,14 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-import jwt from 'jsonwebtoken';
+
 import { signRequest } from '@worldcoin/idkit-core/signing';
 
 app.use(express.json());
+
+
+
+
 
 
 
@@ -29,20 +33,18 @@ app.post('/api/auth/rp-signature', async (req, res) => {
   try {
     const { action } = req.body;
 
-    // In dev mode, if the RP_SIGNING_KEY is not available, return a mock
+    const expectedAction = process.env.WORLD_ID_ACTION || "human-world-login";
+    if (action !== expectedAction) {
+       return res.status(400).json({ error: "Invalid action requested" });
+    }
+
     if (!process.env.WORLD_RP_SIGNING_KEY) {
-       console.log("Returning mock RP signature (Missing WORLD_RP_SIGNING_KEY)");
-       return res.json({
-         sig: "mock_sig",
-         nonce: "mock_nonce",
-         created_at: Math.floor(Date.now() / 1000),
-         expires_at: Math.floor(Date.now() / 1000) + 3600
-       });
+       return res.status(500).json({ error: "Server missing RP_SIGNING_KEY credentials" });
     }
 
     const { sig, nonce, createdAt, expiresAt } = signRequest({
       signingKeyHex: process.env.WORLD_RP_SIGNING_KEY,
-      action: action || "human-world-login",
+      action: expectedAction,
     });
 
     return res.json({
@@ -57,7 +59,7 @@ app.post('/api/auth/rp-signature', async (req, res) => {
   }
 });
 
-// Auth Bridge: World ID -> Supabase JWT
+// Auth Bridge: World ID Verification
 app.post('/api/auth/verify', async (req, res) => {
   const { proof } = req.body;
 
@@ -65,54 +67,42 @@ app.post('/api/auth/verify', async (req, res) => {
     return res.status(400).json({ error: 'Missing proof' });
   }
 
-  const rp_id = process.env.WORLD_RP_ID || "app_mock_rp_id";
-  let isValid = false;
-  let nullifier = null;
-
-  // Development bypass if explicitly configured or missing real credentials
-  if (process.env.NODE_ENV !== 'production' && (!process.env.WORLD_RP_ID || process.env.ENABLE_DEV_BYPASS === 'true')) {
-    console.log("Using Development Authentication Bypass");
-    isValid = true;
-    nullifier = `dev_nullifier_${crypto.randomUUID().substring(0,8)}`;
-  } else {
-    // Production Real Verification
-    try {
-      const response = await fetch(`https://developer.world.org/api/v4/verify/${rp_id}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(proof),
-      });
-
-      if (response.ok) {
-        const verifyData = await response.json();
-        isValid = true;
-        if (proof.responses && proof.responses.length > 0) {
-          nullifier = proof.responses[0].nullifier || proof.responses[0].session_nullifier?.[0];
-        }
-      } else {
-        const err = await response.text();
-        console.error("World ID verification failed:", err);
-      }
-    } catch (error) {
-      console.error("World ID API connection error:", error);
-    }
+  const rp_id = process.env.WORLD_RP_ID;
+  if (!rp_id) {
+    return res.status(500).json({ error: 'Server missing WORLD_RP_ID credentials' });
   }
 
-  if (isValid && nullifier) {
-    const userId = nullifier.toString();
-    const supabaseJwtSecret = process.env.SUPABASE_JWT_SECRET || 'super-secret-mock-jwt-key-for-local-dev-only-12345';
+  try {
+    const response = await fetch(`https://developer.world.org/api/v4/verify/${rp_id}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(proof),
+    });
 
-    const payload = {
-      aud: 'authenticated',
-      exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24),
-      sub: userId,
-      role: 'authenticated'
-    };
+    if (response.ok) {
+      if (!proof.session_id) {
+        return res.status(400).json({ error: "Unusable proof payload structure. Missing session_id." });
+      }
 
-    const token = jwt.sign(payload, supabaseJwtSecret);
-    return res.json({ token, user: { id: userId, username: `Human_${userId.substring(userId.length > 6 ? userId.length - 6 : 0).toUpperCase()}` }});
-  } else {
-    return res.status(401).json({ error: 'Invalid proof or missing nullifier' });
+      return res.json({
+        verified: true,
+        worldIdentity: {
+          sessionId: proof.session_id,
+          verification: proof.responses?.[0]?.identifier || "proof_of_human"
+        },
+        user: {
+          id: proof.session_id,
+          username: `Human_${proof.session_id.substring(proof.session_id.length > 6 ? proof.session_id.length - 6 : 0).toUpperCase()}`
+        }
+      });
+    } else {
+      const err = await response.text();
+      console.error("World ID verification rejected by World API:", err);
+      return res.status(401).json({ error: 'Invalid proof' });
+    }
+  } catch (error) {
+    console.error("World ID API connection error:", error);
+    return res.status(500).json({ error: "Failed to connect to verification server" });
   }
 });
 
