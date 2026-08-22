@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
-import { ArrowLeft, Users, Info, Coffee, GalleryVerticalEnd, Building2 } from 'lucide-react';
+import { ArrowLeft, Users, Info, Coffee, GalleryVerticalEnd, Building2, Settings2 } from 'lucide-react';
+import { AdminControlPanel } from '../admin/AdminControlPanel';
 import { Chat } from '../social/Chat';
 import { CentralPlazaEngine } from './CentralPlazaEngine';
-import { RoomService, RoomData } from '../../services/RoomService';
+import { ROOM_MAP_UPDATED_EVENT, RoomService, type RoomData } from '../../services/RoomService';
 import { PropertyInspector } from './PropertyInspector';
 import { InWorldAd } from './InWorldAd';
 import type { PlayerSpeech } from '../../game/roomEngine';
@@ -27,14 +28,29 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
   const [incomingMessage] = useState<ChatMessage | null>(null);
   const [roomData, setRoomData] = useState<RoomData | null>(null);
   const [showInspector, setShowInspector] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [playerSpeech, setPlayerSpeech] = useState<PlayerSpeech | null>(null);
-
-
+  const adminEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_ADMIN_PANEL === 'true';
 
   useEffect(() => {
-    setRoomData(RoomService.getRoom(roomId));
+    const refreshRoomMeta = () => setRoomData(RoomService.getRoom(roomId));
+    refreshRoomMeta();
+    window.addEventListener(ROOM_MAP_UPDATED_EVENT, refreshRoomMeta);
+    return () => window.removeEventListener(ROOM_MAP_UPDATED_EVENT, refreshRoomMeta);
   }, [roomId]);
+
+  useEffect(() => {
+    if (!adminEnabled) return;
+    const toggleAdmin = (event: KeyboardEvent) => {
+      if (event.shiftKey && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        setShowAdmin((current) => !current);
+      }
+    };
+    window.addEventListener('keydown', toggleAdmin);
+    return () => window.removeEventListener('keydown', toggleAdmin);
+  }, [adminEnabled]);
 
   const handleInteract = useCallback((message: string) => {
     setToast(message);
@@ -51,34 +67,31 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
 
   return (
     <div className="absolute inset-0 flex flex-col bg-[#10252d]">
-      {/* Header Overlay */}
       <div className="pointer-events-auto absolute left-0 right-0 top-0 z-20 flex h-14 items-center justify-between border-b border-white/[0.06] bg-gradient-to-b from-[#07191f]/96 via-[#0b2026]/82 to-[#0b1b21]/38 px-3 shadow-[0_10px_32px_rgba(3,15,18,.16)] backdrop-blur-xl sm:px-4">
         <div className="flex items-center gap-3">
-          <button
-            onClick={onLeave}
-            className="-ml-1 rounded-full p-2 text-white/65 transition-colors hover:bg-white/10 hover:text-white"
-          >
+          <button onClick={onLeave} className="-ml-1 rounded-full p-2 text-white/65 transition-colors hover:bg-white/10 hover:text-white">
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h2 className="flex items-center gap-2 text-sm font-black capitalize leading-tight text-amber-50">
-              {roomData?.name || roomId.replace('-', ' ')}
-            </h2>
+            <h2 className="flex items-center gap-2 text-sm font-black capitalize leading-tight text-amber-50">{roomData?.name || roomId.replace('-', ' ')}</h2>
             <div className="mt-0.5 flex items-center gap-1 text-[10px] font-bold text-emerald-300">
               <Users size={12} />
               {presenceCount} humans present <span className="ml-1 text-amber-200/70">· live plaza</span>
             </div>
           </div>
         </div>
-        <button
-          onClick={() => setShowInspector(true)}
-          className="rounded-full p-2 text-white/55 transition-colors hover:bg-white/10 hover:text-white"
-        >
-          <Info size={20} />
-        </button>
+        <div className="flex items-center gap-1">
+          {adminEnabled && (
+            <button onClick={() => setShowAdmin(true)} aria-label="Admin control panel" title="Admin control panel · Shift+A" className="rounded-full p-2 text-amber-200/65 transition-colors hover:bg-white/10 hover:text-amber-100">
+              <Settings2 size={19}/>
+            </button>
+          )}
+          <button onClick={() => setShowInspector(true)} aria-label="Room information" className="rounded-full p-2 text-white/55 transition-colors hover:bg-white/10 hover:text-white">
+            <Info size={20} />
+          </button>
+        </div>
       </div>
 
-      {/* PIXI WebGL Engine Container */}
       <div className="flex-1 relative">
         <CentralPlazaEngine
           roomType={roomData?.type}
@@ -89,7 +102,6 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
           playerSpeech={playerSpeech}
         />
 
-        {/* Interaction Toast Overlay */}
         {isDisconnected && (
           <div className="pointer-events-none absolute left-1/2 top-16 z-50 -translate-x-1/2 animate-in rounded-full bg-rose-600 px-4 py-2 text-sm text-white shadow-lg fade-in">
             Connection Lost - Reconnecting...
@@ -111,16 +123,21 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
 
       {roomData && roomData.type === 'plaza' && <div className="hidden opacity-55 2xl:block"><InWorldAd placementId="central-1" roomName={roomData.name} /></div>}
 
-      {/* Chat Overlay */}
       <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-20 h-16 overflow-visible [&>div]:h-16">
         <Chat onSendMessage={handleSendChat} incomingMessage={incomingMessage} />
       </div>
 
       {showInspector && roomData && (
-        <PropertyInspector
-          room={roomData}
-          onClose={() => setShowInspector(false)}
-          onEnter={() => setShowInspector(false)}
+        <PropertyInspector room={roomData} onClose={() => setShowInspector(false)} onEnter={() => setShowInspector(false)} />
+      )}
+
+      {showAdmin && adminEnabled && (
+        <AdminControlPanel
+          onClose={() => setShowAdmin(false)}
+          onEnterRoom={(targetRoomId) => {
+            setShowAdmin(false);
+            onEnterRoom(targetRoomId);
+          }}
         />
       )}
     </div>
