@@ -51,9 +51,12 @@ export class RoomEngineCore {
   }
 
   moveUserDirect(id: string, delta: IsoPoint, deltaMs: number) {
-    return this.users.get(id)?.moveDirect(
+    const user = this.users.get(id);
+    if (!user) return undefined;
+    return user.moveDirect(
       delta,
-      (point) => this.geometry.staticBlocked(point) || this.isDynamicallyOccupied(point, id, 0.27),
+      (from, to) => this.geometry.canTraverse(from, to) && !this.isDynamicallyOccupied(to, id, 0.27),
+      (point) => this.geometry.elevationAt(point),
       deltaMs,
     );
   }
@@ -67,6 +70,7 @@ export class RoomEngineCore {
       now,
       (point) => this.geometry.staticBlocked(point),
       (point) => this.isDynamicallyOccupied(point, id),
+      (point) => this.geometry.elevationAt(point),
     );
   }
 }

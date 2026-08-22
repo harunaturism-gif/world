@@ -63,19 +63,19 @@ export class RoomUser {
     if (clearTarget) this.lastRequestedTarget = undefined;
   }
 
-  moveDirect(delta: IsoPoint, blocked: (point: IsoPoint) => boolean, deltaMs: number): RoomUserFrame {
+  moveDirect(delta: IsoPoint, canTraverse: (from: IsoPoint, to: IsoPoint) => boolean, elevationAt: (point: IsoPoint) => number, deltaMs: number): RoomUserFrame {
     this.stop(true);
     const previous = this.iso.clone();
     const full = { x: previous.x + delta.x, y: previous.y + delta.y };
     const slideX = { x: full.x, y: previous.y };
     const slideY = { x: previous.x, y: full.y };
-    if (!blocked(full)) this.iso.set(full.x, full.y);
-    else if (!blocked(slideX)) this.iso.set(slideX.x, slideX.y);
-    else if (!blocked(slideY)) this.iso.set(slideY.x, slideY.y);
+    if (canTraverse(previous, full)) this.iso.set(full.x, full.y, elevationAt(full));
+    else if (canTraverse(previous, slideX)) this.iso.set(slideX.x, slideX.y, elevationAt(slideX));
+    else if (canTraverse(previous, slideY)) this.iso.set(slideY.x, slideY.y, elevationAt(slideY));
     return this.frame(previous, deltaMs, false, false);
   }
 
-  tick(deltaSeconds: number, now: number, staticBlocked: (point: IsoPoint) => boolean, dynamicBlocked: (point: IsoPoint) => boolean): RoomUserFrame {
+  tick(deltaSeconds: number, now: number, staticBlocked: (point: IsoPoint) => boolean, dynamicBlocked: (point: IsoPoint) => boolean, elevationAt: (point: IsoPoint) => number): RoomUserFrame {
     const previous = this.iso.clone();
     const waypoint = this.waypoints[0];
     if (!waypoint) return this.frame(previous, deltaSeconds * 1000, true, false);
@@ -85,7 +85,7 @@ export class RoomUser {
     if (distance < 0.025) {
       this.iso.set(waypoint.x, waypoint.y, waypoint.z);
       this.waypoints.shift();
-      return this.tick(deltaSeconds, now, staticBlocked, dynamicBlocked);
+      return this.tick(deltaSeconds, now, staticBlocked, dynamicBlocked, elevationAt);
     }
     const step = Math.min(this.speed * deltaSeconds, distance);
     const next = { x: this.iso.x + dx / distance * step, y: this.iso.y + dy / distance * step };
@@ -104,7 +104,7 @@ export class RoomUser {
       return this.frame(previous, deltaSeconds * 1000, false, true);
     }
     this.blockedSince = 0;
-    this.iso.set(next.x, next.y);
+    this.iso.set(next.x, next.y, elevationAt(next));
     if (Math.hypot(waypoint.x - this.iso.x, waypoint.y - this.iso.y) < 0.025) {
       this.iso.set(waypoint.x, waypoint.y, waypoint.z);
       this.waypoints.shift();

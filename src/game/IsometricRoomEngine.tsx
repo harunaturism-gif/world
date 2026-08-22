@@ -123,9 +123,10 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
     const ambientParticles: AmbientParticle[] = [];
     const camera = new CameraController();
     const geometry = new RoomGeometry(room.geometry);
+    const collisionObjects = [...room.objects, ...(room.contextObjects ?? []).filter((object) => object.collision)];
     const core = new RoomEngineCore(room.id, {
-      staticBlocked: (point) => geometry.isBlocked(point, room.objects),
-      canTraverse: (from, to) => geometry.canTraverse(from, to, room.objects),
+      staticBlocked: (point) => geometry.isBlocked(point, collisionObjects),
+      canTraverse: (from, to) => geometry.canTraverse(from, to, collisionObjects),
       elevationAt: (point) => geometry.elevationAt(point),
     });
     let disposed = false;
@@ -198,7 +199,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       };
 
       const insideFloor = (point: IsoPoint) => Boolean(geometry.cellAt(point));
-      const blocked = (point: IsoPoint) => geometry.isBlocked(point, room.objects);
+      const blocked = (point: IsoPoint) => geometry.isBlocked(point, collisionObjects);
       const routeActor = (actor: Actor, target: IsoPoint) => {
         return core.routeUser(actor.id, snapToTile(target), true);
       };
