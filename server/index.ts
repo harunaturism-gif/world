@@ -28,12 +28,18 @@ app.use(express.json());
 
 
 
+
 // RP Signature for IDKit initialization
 app.post('/api/auth/rp-signature', async (req, res) => {
   try {
     const { action } = req.body;
 
-    const expectedAction = process.env.WORLD_ID_ACTION || "human-world-login";
+    // Fail closed if server env doesn't define expected action
+    if (!process.env.WORLD_ID_ACTION) {
+       return res.status(500).json({ error: "Server missing WORLD_ID_ACTION configuration" });
+    }
+    const expectedAction = process.env.WORLD_ID_ACTION;
+
     if (action !== expectedAction) {
        return res.status(400).json({ error: "Invalid action requested" });
     }
@@ -52,6 +58,7 @@ app.post('/api/auth/rp-signature', async (req, res) => {
       nonce,
       created_at: createdAt,
       expires_at: expiresAt,
+      rp_id: process.env.WORLD_RP_ID
     });
   } catch (error) {
     console.error("RP Sign error", error);
@@ -64,7 +71,7 @@ app.post('/api/auth/verify', async (req, res) => {
   const { proof } = req.body;
 
   if (!proof) {
-    return res.status(400).json({ error: 'Missing proof' });
+    return res.status(400).json({ error: 'Missing proof payload from client' });
   }
 
   const rp_id = process.env.WORLD_RP_ID;
@@ -80,25 +87,32 @@ app.post('/api/auth/verify', async (req, res) => {
     });
 
     if (response.ok) {
-      if (!proof.session_id) {
-        return res.status(400).json({ error: "Unusable proof payload structure. Missing session_id." });
+      const verifyData = await response.json();
+
+      // Trust ONLY the verified World API response, never the client proof identity
+      if (verifyData.success !== true || !verifyData.session_id) {
+        console.error("Verification succeeded but no valid session_id returned by World API.");
+        return res.status(400).json({ error: "Unusable verified payload structure. Missing session_id." });
       }
 
+      const verifiedSessionId = verifyData.session_id;
+
+      // Explicit Auth Response Contract
       return res.json({
         verified: true,
         worldIdentity: {
-          sessionId: proof.session_id,
-          verification: proof.responses?.[0]?.identifier || "proof_of_human"
+          sessionId: verifiedSessionId,
+          verification: "proof_of_human" // Assumed constraint enforced during proof generation
         },
         user: {
-          id: proof.session_id,
-          username: `Human_${proof.session_id.substring(proof.session_id.length > 6 ? proof.session_id.length - 6 : 0).toUpperCase()}`
+          id: verifiedSessionId, // Temporary mapped ID until database persistence
+          username: `Human_${verifiedSessionId.substring(verifiedSessionId.length > 6 ? verifiedSessionId.length - 6 : 0).toUpperCase()}`
         }
       });
     } else {
       const err = await response.text();
       console.error("World ID verification rejected by World API:", err);
-      return res.status(401).json({ error: 'Invalid proof' });
+      return res.status(401).json({ error: 'Invalid proof rejected by verification server' });
     }
   } catch (error) {
     console.error("World ID API connection error:", error);

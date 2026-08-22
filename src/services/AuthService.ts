@@ -1,12 +1,12 @@
 import { MiniKit } from '@worldcoin/minikit-js';
-import { IDKit } from '@worldcoin/idkit-core';
+import { IDKit, CredentialRequest, any } from '@worldcoin/idkit-core';
 
 export const AuthService = {
   async authenticate(): Promise<any | null> {
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
     // Explicit Development Bypass
-    const isDev = import.meta.env.VITE_ENABLE_DEV_AUTH === 'true';
+    const isDev = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEV_AUTH === 'true';
 
     // Store session internally on client temporarily for returning user continuity proof
     const storedSession = localStorage.getItem('world_session_id');
@@ -19,16 +19,17 @@ export const AuthService = {
 
     if (!MiniKit.isInstalled() && !isDev) {
       console.error("Not inside World App and Dev Auth disabled.");
-      return null;
+      return null; // Fail closed if credentials/context missing
     }
 
     try {
-      // Fetch RP Signature
+      // Fetch RP Signature from backend first
       const rpSigRes = await fetch(`${backendUrl}/api/auth/rp-signature`, {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ action: 'human-world-login' })
+         body: JSON.stringify({ action: 'human-world-login' }) // Requesting the specific server-controlled action
       });
+
       if (!rpSigRes.ok) {
          console.error("Server missing credentials or action rejected.");
          return null;
@@ -36,38 +37,45 @@ export const AuthService = {
       const rpSig = await rpSigRes.json();
 
       let request;
+      const app_id = import.meta.env.VITE_WORLD_APP_ID;
+
+      if (!app_id) {
+         console.error("Missing VITE_WORLD_APP_ID environment configuration");
+         return null;
+      }
+
       if (storedSession) {
-        // Returning Login
-        request = await IDKit.proveSession(`session_${storedSession.replace('session_', '')}`, {
-          app_id: import.meta.env.VITE_WORLD_APP_ID || 'app_missing',
+        // Returning Login via proveSession
+        request = await IDKit.proveSession(`session_${storedSession.replace("session_", "")}`, {
+          app_id: app_id,
           rp_context: {
-            rp_id: import.meta.env.VITE_WORLD_RP_ID || 'rp_missing',
+            rp_id: rpSig.rp_id || "rp_fallback", // Handled by server sig logic actually
             nonce: rpSig.nonce,
             created_at: rpSig.created_at,
             expires_at: rpSig.expires_at,
             signature: rpSig.sig,
           },
           environment: 'production'
-        }).preset({ type: 'ProofOfHuman' } as any);
+        }).constraints(any(CredentialRequest('proof_of_human')));
       } else {
-        // First Login
+        // First Login via createSession
         request = await IDKit.createSession({
-          app_id: import.meta.env.VITE_WORLD_APP_ID || 'app_missing',
+          app_id: app_id,
           rp_context: {
-            rp_id: import.meta.env.VITE_WORLD_RP_ID || 'rp_missing',
+            rp_id: rpSig.rp_id || "rp_fallback",
             nonce: rpSig.nonce,
             created_at: rpSig.created_at,
             expires_at: rpSig.expires_at,
             signature: rpSig.sig,
           },
           environment: 'production'
-        }).preset({ type: 'ProofOfHuman' } as any);
+        }).constraints(any(CredentialRequest('proof_of_human')));
       }
 
       const result = await request.pollUntilCompletion();
 
       if (result && result.success && result.result) {
-        // Send complete IDKitResult payload to backend for World validation
+        // Send complete IDKitResult payload to backend for real World validation
         const verifyRes = await fetch(`${backendUrl}/api/auth/verify`, {
            method: 'POST',
            headers: { 'Content-Type': 'application/json' },
@@ -78,7 +86,7 @@ export const AuthService = {
            const authData = await verifyRes.json();
 
            if (authData.verified && authData.worldIdentity?.sessionId) {
-              // Store session locally to allow returning login flow
+              // Store verified session locally to allow returning login flow
               localStorage.setItem('world_session_id', authData.worldIdentity.sessionId);
               return authData.user;
            }
