@@ -30,6 +30,7 @@ export interface RoomSeatDefinition {
   facing: 'north' | 'south' | 'east' | 'west';
   depthBias?: number;
   visualOffset?: number;
+  occlusion?: { enabled: boolean; sourceY: number; sourceHeight: number; offsetX?: number; offsetY?: number };
 }
 
 export interface RoomObjectDefinition {
