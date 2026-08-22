@@ -35,6 +35,10 @@ export const AuthService = {
          return null;
       }
       const rpSig = await rpSigRes.json();
+      if (!rpSig.rp_id) {
+         console.error("Backend failed to provide RP ID.");
+         return null;
+      }
 
       let request;
       const app_id = import.meta.env.VITE_WORLD_APP_ID;
@@ -49,7 +53,7 @@ export const AuthService = {
         request = await IDKit.proveSession(`session_${storedSession.replace("session_", "")}`, {
           app_id: app_id,
           rp_context: {
-            rp_id: rpSig.rp_id || "rp_fallback", // Handled by server sig logic actually
+            rp_id: rpSig.rp_id,
             nonce: rpSig.nonce,
             created_at: rpSig.created_at,
             expires_at: rpSig.expires_at,
@@ -62,7 +66,7 @@ export const AuthService = {
         request = await IDKit.createSession({
           app_id: app_id,
           rp_context: {
-            rp_id: rpSig.rp_id || "rp_fallback",
+            rp_id: rpSig.rp_id,
             nonce: rpSig.nonce,
             created_at: rpSig.created_at,
             expires_at: rpSig.expires_at,

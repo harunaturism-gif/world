@@ -11,16 +11,17 @@ app.use(express.json());
 app.post('/api/auth/rp-signature', async (req, res) => {
     try {
         const { action } = req.body;
-        // Fail closed if server env doesn't define expected action
-        if (!process.env.WORLD_ID_ACTION) {
-            return res.status(500).json({ error: "Server missing WORLD_ID_ACTION configuration" });
-        }
-        const expectedAction = process.env.WORLD_ID_ACTION;
+        // Server strictly controls the action. It does NOT trust the client string.
+        const expectedAction = process.env.WORLD_ID_ACTION || "human-world-login";
         if (action !== expectedAction) {
             return res.status(400).json({ error: "Invalid action requested" });
         }
         if (!process.env.WORLD_RP_SIGNING_KEY) {
             return res.status(500).json({ error: "Server missing RP_SIGNING_KEY credentials" });
+        }
+        const rp_id = process.env.WORLD_RP_ID;
+        if (!rp_id || !rp_id.startsWith("rp_")) {
+            return res.status(500).json({ error: "Server missing or invalid WORLD_RP_ID configuration" });
         }
         const { sig, nonce, createdAt, expiresAt } = signRequest({
             signingKeyHex: process.env.WORLD_RP_SIGNING_KEY,
@@ -31,7 +32,7 @@ app.post('/api/auth/rp-signature', async (req, res) => {
             nonce,
             created_at: createdAt,
             expires_at: expiresAt,
-            rp_id: process.env.WORLD_RP_ID
+            rp_id
         });
     }
     catch (error) {
