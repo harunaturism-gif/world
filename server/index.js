@@ -12,7 +12,10 @@ app.post('/api/auth/rp-signature', async (req, res) => {
     try {
         const { action } = req.body;
         // Server strictly controls the action. It does NOT trust the client string.
-        const expectedAction = process.env.WORLD_ID_ACTION || "human-world-login";
+        if (!process.env.WORLD_ID_ACTION) {
+            return res.status(500).json({ error: "Server missing WORLD_ID_ACTION configuration" });
+        }
+        const expectedAction = process.env.WORLD_ID_ACTION;
         if (action !== expectedAction) {
             return res.status(400).json({ error: "Invalid action requested" });
         }
