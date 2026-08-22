@@ -45,28 +45,35 @@ function emitMapUpdate() {
   window.dispatchEvent(new Event(ROOM_MAP_UPDATED_EVENT));
 }
 
+function getLocalRooms() {
+  return withOverrides(demoRooms);
+}
+
 export const RoomService = {
   async getRooms(): Promise<RoomData[]> {
+    if (!supabase) return getLocalRooms().filter((room) => room.is_public);
+
     try {
-      if (!import.meta.env.VITE_SUPABASE_URL) return withOverrides(demoRooms).filter((room) => room.is_public);
       const { data, error } = await supabase
         .from('rooms')
         .select('*')
         .eq('is_public', true);
+
       if (error || !data || data.length === 0) throw new Error('Supabase empty/fail');
       const mapped = (data as RoomData[]).map((room) => ({ ...room, presence: 5 }));
       return withOverrides(mapped).filter((room) => room.is_public);
     } catch {
-      return withOverrides(demoRooms).filter((room) => room.is_public);
+      return getLocalRooms().filter((room) => room.is_public);
     }
   },
 
   getAdminRooms(): RoomData[] {
-    return withOverrides(demoRooms);
+    return getLocalRooms();
   },
 
   getRoom(id: string) {
-    return withOverrides(demoRooms).find((room) => room.id === id) ?? withOverrides(demoRooms)[0];
+    const rooms = getLocalRooms();
+    return rooms.find((room) => room.id === id) ?? rooms[0];
   },
 
   saveRoomMeta(room: RoomData) {

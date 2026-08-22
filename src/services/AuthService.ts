@@ -34,7 +34,9 @@ export const AuthService = {
 
            // Inject token into Supabase client to satisfy RLS
            const { supabase } = await import('../lib/supabase');
-           await supabase.auth.setSession({ access_token: token, refresh_token: token });
+           if (supabase && token) {
+             await supabase.auth.setSession({ access_token: token, refresh_token: token });
+           }
 
            return user;
         }

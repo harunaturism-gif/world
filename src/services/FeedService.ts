@@ -16,34 +16,78 @@ export interface PostData {
 let mockIdCounter = 100;
 const mockPosts: PostData[] = [];
 
+function getLocalFeed() {
+  return [...mockPosts].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+}
+
+function likeLocalPost(postId: number) {
+  const post = mockPosts.find((candidate) => candidate.id === postId);
+  if (post) post.likes += 1;
+  return true;
+}
+
+function createLocalPost(
+  authorId: string,
+  authorName: string,
+  content: string,
+  roomId?: string,
+  roomName?: string,
+): PostData {
+  const post: PostData = {
+    id: ++mockIdCounter,
+    author_id: authorId,
+    author_name: authorName,
+    content,
+    room_id: roomId || null,
+    room_name: roomName || null,
+    likes: 0,
+    comments: 0,
+    is_system: false,
+    created_at: new Date().toISOString(),
+  };
+  mockPosts.push(post);
+  return post;
+}
+
 export const FeedService = {
   async getFeed(): Promise<PostData[]> {
+    if (!supabase) return getLocalFeed();
+
     try {
       const { data, error } = await supabase
         .from('posts')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
-      if (error || !data || data.length === 0) throw new Error("Supabase feed empty/fail");
+
+      if (error || !data || data.length === 0) throw new Error('Supabase feed empty/fail');
       return data as PostData[];
     } catch {
-      return [...mockPosts].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      return getLocalFeed();
     }
   },
 
   async likePost(postId: number): Promise<boolean> {
+    if (!supabase) return likeLocalPost(postId);
+
     try {
-      const { error } = await supabase.rpc("increment_post_likes", { post_id: postId });
-      if (error) throw new Error("Supabase rpc fail");
+      const { error } = await supabase.rpc('increment_post_likes', { post_id: postId });
+      if (error) throw new Error('Supabase rpc fail');
       return true;
     } catch {
-      const post = mockPosts.find(p => p.id === postId);
-      if (post) post.likes += 1;
-      return true;
+      return likeLocalPost(postId);
     }
   },
 
-  async createPost(authorId: string, authorName: string, content: string, roomId?: string, roomName?: string): Promise<PostData | null> {
+  async createPost(
+    authorId: string,
+    authorName: string,
+    content: string,
+    roomId?: string,
+    roomName?: string,
+  ): Promise<PostData | null> {
+    if (!supabase) return createLocalPost(authorId, authorName, content, roomId, roomName);
+
     const newPost = {
       author_id: authorId,
       author_name: authorName,
@@ -61,12 +105,11 @@ export const FeedService = {
         .insert([newPost])
         .select()
         .single();
-      if (error) throw new Error("Supabase insert fail");
+
+      if (error) throw new Error('Supabase insert fail');
       return data as PostData;
     } catch {
-      const p: PostData = { ...newPost, id: ++mockIdCounter, created_at: new Date().toISOString() };
-      mockPosts.push(p);
-      return p;
+      return createLocalPost(authorId, authorName, content, roomId, roomName);
     }
-  }
+  },
 };
