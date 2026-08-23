@@ -5,34 +5,90 @@ import crypto from 'crypto';
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
-import jwt from 'jsonwebtoken';
+import { signRequest } from '@worldcoin/idkit-core/signing';
 app.use(express.json());
-// Auth Bridge: World ID -> Supabase JWT
+// RP Signature for IDKit initialization
+app.post('/api/auth/rp-signature', async (req, res) => {
+    try {
+        const { action } = req.body;
+        // Server strictly controls the action. It does NOT trust the client string.
+        if (!process.env.WORLD_ID_ACTION) {
+            return res.status(500).json({ error: "Server missing WORLD_ID_ACTION configuration" });
+        }
+        const expectedAction = process.env.WORLD_ID_ACTION;
+        if (action !== expectedAction) {
+            return res.status(400).json({ error: "Invalid action requested" });
+        }
+        if (!process.env.WORLD_RP_SIGNING_KEY) {
+            return res.status(500).json({ error: "Server missing RP_SIGNING_KEY credentials" });
+        }
+        const rp_id = process.env.WORLD_RP_ID;
+        if (!rp_id || !rp_id.startsWith("rp_")) {
+            return res.status(500).json({ error: "Server missing or invalid WORLD_RP_ID configuration" });
+        }
+        const { sig, nonce, createdAt, expiresAt } = signRequest({
+            signingKeyHex: process.env.WORLD_RP_SIGNING_KEY,
+            action: expectedAction,
+        });
+        return res.json({
+            sig,
+            nonce,
+            created_at: createdAt,
+            expires_at: expiresAt,
+            rp_id
+        });
+    }
+    catch (error) {
+        console.error("RP Sign error", error);
+        return res.status(500).json({ error: "Failed to sign request" });
+    }
+});
+// Auth Bridge: World ID Verification
 app.post('/api/auth/verify', async (req, res) => {
-    const { proof, nullifier_hash } = req.body;
+    const { proof } = req.body;
     if (!proof) {
-        return res.status(400).json({ error: 'Missing proof' });
+        return res.status(400).json({ error: 'Missing proof payload from client' });
     }
-    // 1. In a real app, verify the proof against the World ID API here.
-    // We mock a successful verification for now since we don't have the App ID configured.
-    const isValid = true;
-    if (isValid) {
-        // 2. We use the nullifier_hash as the stable internal identity (canonical user ID)
-        const userId = nullifier_hash || crypto.randomUUID();
-        // 3. Sign a JWT that Supabase RLS will accept.
-        // Must match VITE_SUPABASE_JWT_SECRET in production
-        const supabaseJwtSecret = process.env.SUPABASE_JWT_SECRET || 'super-secret-mock-jwt-key-for-local-dev-only-12345';
-        const payload = {
-            aud: 'authenticated',
-            exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24), // 1 day
-            sub: userId,
-            role: 'authenticated'
-        };
-        const token = jwt.sign(payload, supabaseJwtSecret);
-        return res.json({ token, user: { id: userId, username: `Human_${userId.substring(0, 6)}` } });
+    const rp_id = process.env.WORLD_RP_ID;
+    if (!rp_id) {
+        return res.status(500).json({ error: 'Server missing WORLD_RP_ID credentials' });
     }
-    else {
-        return res.status(401).json({ error: 'Invalid proof' });
+    try {
+        const response = await fetch(`https://developer.world.org/api/v4/verify/${rp_id}`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(proof),
+        });
+        if (response.ok) {
+            const verifyData = await response.json();
+            // Trust ONLY the verified World API response, never the client proof identity
+            if (verifyData.success !== true || !verifyData.session_id) {
+                console.error("Verification succeeded but no valid session_id returned by World API.");
+                return res.status(400).json({ error: "Unusable verified payload structure. Missing session_id." });
+            }
+            const verifiedSessionId = verifyData.session_id;
+            // Explicit Auth Response Contract
+            return res.json({
+                verified: true,
+                worldIdentity: {
+                    sessionId: verifiedSessionId,
+                    verification: "proof_of_human" // Assumed constraint enforced during proof generation
+                },
+                user: {
+                    id: verifiedSessionId, // Temporary mapped ID until database persistence
+                    username: `Human_${verifiedSessionId.substring(verifiedSessionId.length > 6 ? verifiedSessionId.length - 6 : 0).toUpperCase()}`
+                }
+            });
+        }
+        else {
+            const err = await response.text();
+            console.error("World ID verification rejected by World API:", err);
+            return res.status(401).json({ error: 'Invalid proof rejected by verification server' });
+        }
+    }
+    catch (error) {
+        console.error("World ID API connection error:", error);
+        return res.status(500).json({ error: "Failed to connect to verification server" });
     }
 });
 const rooms = new Map();
