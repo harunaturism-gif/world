@@ -2,6 +2,10 @@ import { WebSocketServer, WebSocket } from 'ws';
 import express from 'express';
 import http from 'http';
 import crypto from 'crypto';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+
+dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
 
 const app = express();
 const server = http.createServer(app);
