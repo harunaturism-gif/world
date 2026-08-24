@@ -8,6 +8,15 @@ function isValidWorldRpId(value: unknown): value is string {
     && value.length > 3;
 }
 
+function isSanitizedUser(value: unknown): value is { id: string; username: string } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const user = value as Record<string, unknown>;
+  return typeof user.id === 'string'
+    && /^user_[0-9a-f]{64}$/.test(user.id)
+    && typeof user.username === 'string'
+    && /^Human_[0-9A-F]{8}$/.test(user.username);
+}
+
 export const AuthService = {
   async authenticate(): Promise<any | null> {
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
@@ -23,18 +32,25 @@ export const AuthService = {
       return { id: 'dev-session-id', username: 'DevCitizen' };
     }
 
-    if (!MiniKit.isInstalled()) {
-      console.error('Not inside World App and Dev Auth disabled.');
-      return null;
-    }
-
-    // Store session internally on client temporarily for returning user continuity proof.
-    const storedSession = localStorage.getItem('world_session_id');
-
     try {
+      const sessionRes = await fetch(`${backendUrl}/api/auth/session`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+      if (sessionRes.ok) {
+        const sessionData = await sessionRes.json();
+        if (isSanitizedUser(sessionData.user)) return sessionData.user;
+      }
+
+      if (!MiniKit.isInstalled()) {
+        console.error('Not inside World App and Dev Auth disabled.');
+        return null;
+      }
+
       // Session proofs require an actionless RP-context signature from the backend.
       const rpSigRes = await fetch(`${backendUrl}/api/auth/session-rp-context`, {
         method: 'POST',
+        credentials: 'include',
       });
 
       if (!rpSigRes.ok) {
@@ -48,7 +64,6 @@ export const AuthService = {
         return null;
       }
 
-      let request;
       const app_id = import.meta.env.VITE_WORLD_APP_ID;
 
       if (!app_id) {
@@ -56,31 +71,17 @@ export const AuthService = {
         return null;
       }
 
-      if (storedSession) {
-        request = await IDKit.proveSession(`session_${storedSession.replace('session_', '')}`, {
-          app_id,
-          rp_context: {
-            rp_id: rpSig.rp_id,
-            nonce: rpSig.nonce,
-            created_at: rpSig.created_at,
-            expires_at: rpSig.expires_at,
-            signature: rpSig.sig,
-          },
-          environment: 'production',
-        }).constraints(any(CredentialRequest('proof_of_human')));
-      } else {
-        request = await IDKit.createSession({
-          app_id,
-          rp_context: {
-            rp_id: rpSig.rp_id,
-            nonce: rpSig.nonce,
-            created_at: rpSig.created_at,
-            expires_at: rpSig.expires_at,
-            signature: rpSig.sig,
-          },
-          environment: 'production',
-        }).constraints(any(CredentialRequest('proof_of_human')));
-      }
+      const request = await IDKit.createSession({
+        app_id,
+        rp_context: {
+          rp_id: rpSig.rp_id,
+          nonce: rpSig.nonce,
+          created_at: rpSig.created_at,
+          expires_at: rpSig.expires_at,
+          signature: rpSig.sig,
+        },
+        environment: 'production',
+      }).constraints(any(CredentialRequest('proof_of_human')));
 
       const result = await request.pollUntilCompletion();
 
@@ -89,15 +90,13 @@ export const AuthService = {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ proof: result.result }),
+          credentials: 'include',
         });
 
         if (verifyRes.ok) {
           const authData = await verifyRes.json();
 
-          if (authData.verified && authData.worldIdentity?.sessionId) {
-            localStorage.setItem('world_session_id', authData.worldIdentity.sessionId);
-            return authData.user;
-          }
+          if (authData.verified && isSanitizedUser(authData.user)) return authData.user;
         } else {
           console.error('Backend World verification failed.');
         }

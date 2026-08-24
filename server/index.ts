@@ -10,13 +10,67 @@ import {
   isValidProofPayload,
   isValidWorldRpId,
 } from './authSession.js';
+import {
+  createAppSessionConfig,
+  createSanitizedAuthResponse,
+  deriveInternalUser,
+  extractSessionToken,
+  isExpectedBrowserOrigin,
+  serializeLogoutCookie,
+  serializeSessionCookie,
+  signApplicationSession,
+  verifyApplicationSession,
+} from './appSession.js';
 
 dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
 
 const app = express();
 const server = http.createServer(app);
+// SECURITY PHASE 2 LIMITATION: multiplayer WebSockets remain unauthenticated.
+// Closed beta remains blocked until connections and room identity use this app session.
 const wss = new WebSocketServer({ server });
 
+const appSessionConfig = createAppSessionConfig(process.env);
+if (!appSessionConfig && process.env.NODE_ENV !== 'development') {
+  throw new Error('Invalid application-session server configuration');
+}
+
+app.use((req, res, next) => {
+  const isAuthRequest = req.path.startsWith('/api/auth');
+  if (isAuthRequest) res.setHeader('Cache-Control', 'no-store');
+
+  const requestOrigin = req.headers.origin;
+  if (appSessionConfig) res.setHeader('Vary', 'Origin');
+  if (appSessionConfig && requestOrigin === appSessionConfig.appOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', appSessionConfig.appOrigin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
+  if (isAuthRequest && req.method === 'OPTIONS') {
+    if (!appSessionConfig) {
+      return res.status(500).json({ error: 'Server authentication is not configured' });
+    }
+    if (requestOrigin !== appSessionConfig.appOrigin) {
+      return res.status(403).json({ error: 'Origin not allowed' });
+    }
+
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(204).end();
+  }
+
+  return next();
+});
+
+app.use('/api/auth', (req, res, next) => {
+  if (!appSessionConfig) {
+    return res.status(500).json({ error: 'Server authentication is not configured' });
+  }
+  if (!isExpectedBrowserOrigin(req.headers.origin, appSessionConfig.appOrigin)) {
+    return res.status(403).json({ error: 'Origin not allowed' });
+  }
+  return next();
+});
 
 app.use(express.json());
 
@@ -90,22 +144,14 @@ app.post('/api/auth/verify', async (req, res) => {
       return res.status(401).json({ error: 'World verification did not satisfy authentication requirements' });
     }
 
-    const { sessionId, verification } = verifiedWorldSession;
+    if (!appSessionConfig) {
+      return res.status(500).json({ error: 'Server authentication is not configured' });
+    }
 
-    // SECURITY PHASE BOUNDARY: this compatibility response does not issue an
-    // authenticated application session. The World session_id is temporarily
-    // exposed as the user ID. This remains NO-GO for beta until app sessions exist.
-    return res.json({
-      verified: true,
-      worldIdentity: {
-        sessionId,
-        verification,
-      },
-      user: {
-        id: sessionId,
-        username: `Human_${sessionId.slice(-6).toUpperCase()}`,
-      },
-    });
+    const user = deriveInternalUser(verifiedWorldSession.sessionId, appSessionConfig.identitySecret);
+    const applicationToken = signApplicationSession(user, appSessionConfig.sessionSecret);
+    res.setHeader('Set-Cookie', serializeSessionCookie(applicationToken, appSessionConfig.isProduction));
+    return res.json(createSanitizedAuthResponse(user));
   } catch {
     if (controller.signal.aborted) {
       return res.status(504).json({ error: 'World verification timed out' });
@@ -116,6 +162,29 @@ app.post('/api/auth/verify', async (req, res) => {
   } finally {
     clearTimeout(verificationTimeout);
   }
+});
+
+app.get('/api/auth/session', (req, res) => {
+  if (!appSessionConfig) {
+    return res.status(500).json({ error: 'Server authentication is not configured' });
+  }
+
+  const token = extractSessionToken(req.headers.cookie, appSessionConfig.isProduction);
+  const user = token ? verifyApplicationSession(token, appSessionConfig.sessionSecret) : null;
+  if (!user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  return res.json({ authenticated: true, user });
+});
+
+app.post('/api/auth/logout', (_req, res) => {
+  if (!appSessionConfig) {
+    return res.status(500).json({ error: 'Server authentication is not configured' });
+  }
+
+  res.setHeader('Set-Cookie', serializeLogoutCookie(appSessionConfig.isProduction));
+  return res.json({ success: true });
 });
 
 const rooms = new Map<string, Map<string, { x: number, y: number, name: string }>>();
