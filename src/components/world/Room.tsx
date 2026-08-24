@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { ArrowLeft, Users, Info, Coffee, GalleryVerticalEnd, Building2, Settings2 } from 'lucide-react';
 import { AdminControlPanel } from '../admin/AdminControlPanel';
 import { Chat } from '../social/Chat';
@@ -7,6 +7,9 @@ import { ROOM_MAP_UPDATED_EVENT, RoomService, type RoomData } from '../../servic
 import { PropertyInspector } from './PropertyInspector';
 import { InWorldAd } from './InWorldAd';
 import type { PlayerSpeech } from '../../game/roomEngine';
+import { centralPlazaRoom } from '../../game/worldManifest';
+import { loadEditableRoom, updateCatalogObject } from '../../game/adminRoomStore';
+import type { RoomDefinition } from '../../game/roomEngine';
 
 export interface ChatMessage {
   id: number;
@@ -29,9 +32,35 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
   const [roomData, setRoomData] = useState<RoomData | null>(null);
   const [showInspector, setShowInspector] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [adminRoom, setAdminRoom] = useState<RoomDefinition | null>(null);
+  const [selectedAdminObjectId, setSelectedAdminObjectId] = useState<string | null>(null);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [playerSpeech, setPlayerSpeech] = useState<PlayerSpeech | null>(null);
   const adminEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_ADMIN_PANEL === 'true';
+
+  const openAdmin = useCallback(() => {
+    const draft = loadEditableRoom(centralPlazaRoom);
+    setAdminRoom(draft);
+    setSelectedAdminObjectId(draft.objects[0]?.id ?? null);
+    setShowAdmin(true);
+  }, []);
+
+  const closeAdmin = useCallback(() => {
+    setShowAdmin(false);
+    setAdminRoom(null);
+    setSelectedAdminObjectId(null);
+  }, []);
+
+  const moveAdminObject = useCallback((objectId: string, position: { x: number; y: number; z?: number }) => {
+    setAdminRoom((current) => current ? updateCatalogObject(current, objectId, { position }) : current);
+  }, []);
+
+  const editor = useMemo(() => showAdmin && adminRoom ? {
+    enabled: true,
+    selectedObjectId: selectedAdminObjectId,
+    onSelectObject: setSelectedAdminObjectId,
+    onMoveObject: moveAdminObject,
+  } : undefined, [adminRoom, moveAdminObject, selectedAdminObjectId, showAdmin]);
 
   useEffect(() => {
     const refreshRoomMeta = () => setRoomData(RoomService.getRoom(roomId));
@@ -45,12 +74,12 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
     const toggleAdmin = (event: KeyboardEvent) => {
       if (event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault();
-        setShowAdmin((current) => !current);
+        if (showAdmin) closeAdmin(); else openAdmin();
       }
     };
     window.addEventListener('keydown', toggleAdmin);
     return () => window.removeEventListener('keydown', toggleAdmin);
-  }, [adminEnabled]);
+  }, [adminEnabled, closeAdmin, openAdmin, showAdmin]);
 
   const handleInteract = useCallback((message: string) => {
     setToast(message);
@@ -82,7 +111,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
         </div>
         <div className="flex items-center gap-1">
           {adminEnabled && (
-            <button onClick={() => setShowAdmin(true)} aria-label="Admin control panel" title="Admin control panel · Shift+A" className="rounded-full p-2 text-amber-200/65 transition-colors hover:bg-white/10 hover:text-amber-100">
+            <button onClick={openAdmin} aria-label="Admin control panel" title="Admin control panel · Shift+A" className="rounded-full p-2 text-amber-200/65 transition-colors hover:bg-white/10 hover:text-amber-100">
               <Settings2 size={19}/>
             </button>
           )}
@@ -100,6 +129,8 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
           onOpenProfile={onOpenProfile}
           onPresenceUpdate={handlePresenceUpdate}
           playerSpeech={playerSpeech}
+          roomOverride={adminRoom ?? undefined}
+          editor={editor}
         />
 
         {isDisconnected && (
@@ -131,11 +162,15 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
         <PropertyInspector room={roomData} onClose={() => setShowInspector(false)} onEnter={() => setShowInspector(false)} />
       )}
 
-      {showAdmin && adminEnabled && (
+      {showAdmin && adminEnabled && adminRoom && (
         <AdminControlPanel
-          onClose={() => setShowAdmin(false)}
+          onClose={closeAdmin}
+          room={adminRoom}
+          selectedObjectId={selectedAdminObjectId}
+          onRoomChange={setAdminRoom}
+          onSelectedObjectIdChange={setSelectedAdminObjectId}
           onEnterRoom={(targetRoomId) => {
-            setShowAdmin(false);
+            closeAdmin();
             onEnterRoom(targetRoomId);
           }}
         />

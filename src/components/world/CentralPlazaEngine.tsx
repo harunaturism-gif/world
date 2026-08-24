@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'react';
 import * as PIXI from 'pixi.js';
 import { AvatarService, AvatarState } from '../../services/AvatarService';
 import { VisualPlazaPrototype } from '../../game/VisualPlazaPrototype';
-import type { PlayerSpeech } from '../../game/roomEngine';
+import type { RoomEditorController } from '../../game/IsometricRoomEngine';
+import type { PlayerSpeech, RoomDefinition } from '../../game/roomEngine';
 
-interface Props { roomType?: string; onInteract: (message: string) => void; onEnterRoom?: (roomId: string) => void; onOpenProfile?: (username: string) => void; onPresenceUpdate?: (count: number) => void; playerSpeech?: PlayerSpeech | null; }
+interface Props { roomType?: string; onInteract: (message: string) => void; onEnterRoom?: (roomId: string) => void; onOpenProfile?: (username: string) => void; onPresenceUpdate?: (count: number) => void; playerSpeech?: PlayerSpeech | null; roomOverride?: RoomDefinition; editor?: RoomEditorController; }
 const palette = { ink: 0x17213d, mint: 0x7ae7c7, cyan: 0x70d6ff, pink: 0xff70a6, gold: 0xffd166, cream: 0xfff5df, grass: 0x62c98d, brick: 0x664e9b };
 
 function label(text: string, size = 13, color = 0xffffff) { const t = new PIXI.Text(text, { fontFamily: 'Arial', fontSize: size, fontWeight: 'bold', fill: color, dropShadow: true, dropShadowColor: 0x17213d, dropShadowDistance: 2 }); t.anchor.set(.5); return t; }
@@ -18,7 +19,7 @@ function avatar(state: AvatarState, name: string) {
 function interactive(container: PIXI.Container, onClick: () => void) { container.eventMode = 'static'; container.cursor = 'pointer'; container.on('pointertap', (e) => { e.stopPropagation(); onClick(); }); container.on('pointerover', () => { container.scale.set(1.06); }); container.on('pointerout', () => { container.scale.set(1); }); }
 
 export function CentralPlazaEngine(props: Props) {
-  if (props.roomType === 'plaza') return <VisualPlazaPrototype onInteract={props.onInteract} onEnterRoom={props.onEnterRoom} onOpenProfile={props.onOpenProfile} onPresenceUpdate={props.onPresenceUpdate} playerSpeech={props.playerSpeech}/>;
+  if (props.roomType === 'plaza') return <VisualPlazaPrototype onInteract={props.onInteract} onEnterRoom={props.onEnterRoom} onOpenProfile={props.onOpenProfile} onPresenceUpdate={props.onPresenceUpdate} playerSpeech={props.playerSpeech} roomOverride={props.roomOverride} editor={props.editor}/>;
   return <PrimitiveCentralPlazaEngine {...props}/>;
 }
 

@@ -4,7 +4,6 @@ import {
   addCatalogObject,
   deleteRoomObject,
   exportEditableRoom,
-  loadEditableRoom,
   resetEditableRoom,
   saveEditableRoom,
   updateCatalogObject,
@@ -18,19 +17,23 @@ type Tab = 'maps' | 'objects';
 interface Props {
   onClose: () => void;
   onEnterRoom: (roomId: string) => void;
+  room: typeof centralPlazaRoom;
+  selectedObjectId: string | null;
+  onRoomChange: (room: typeof centralPlazaRoom) => void;
+  onSelectedObjectIdChange: (objectId: string | null) => void;
 }
 
 const fieldClass = 'w-full rounded-lg border border-white/10 bg-black/25 px-2.5 py-2 text-xs text-white outline-none focus:border-cyan-300/60';
 const buttonClass = 'rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10';
 
-export function AdminControlPanel({ onClose, onEnterRoom }: Props) {
-  const [tab, setTab] = useState<Tab>('maps');
+export function AdminControlPanel({ onClose, onEnterRoom, room, selectedObjectId, onRoomChange, onSelectedObjectIdChange }: Props) {
+  const [tab, setTab] = useState<Tab>('objects');
   const [maps, setMaps] = useState<RoomData[]>(() => RoomService.getAdminRooms());
-  const [room, setRoom] = useState(() => loadEditableRoom(centralPlazaRoom));
-  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(room.objects[0]?.id ?? null);
   const [catalogCategory, setCatalogCategory] = useState<string>('all');
   const [newPosition, setNewPosition] = useState({ x: 4, y: 4 });
+  const [savedRoomJson, setSavedRoomJson] = useState(() => exportEditableRoom(room));
   const [message, setMessage] = useState('Local admin draft. Backend publishing comes later.');
+  const hasUnsavedChanges = exportEditableRoom(room) !== savedRoomJson;
 
   const selectedObject = room.objects.find((object) => object.id === selectedObjectId) ?? null;
   const selectedCatalog = selectedObject?.catalogId && selectedObject.catalogId in furnitureCatalog
@@ -65,7 +68,7 @@ export function AdminControlPanel({ onClose, onEnterRoom }: Props) {
       x: patch.x ?? selectedObject.position.x,
       y: patch.y ?? selectedObject.position.y,
     };
-    setRoom((current) => updateCatalogObject(current, selectedObject.id, {
+    onRoomChange(updateCatalogObject(room, selectedObject.id, {
       position,
       direction: patch.direction ?? selectedObject.direction,
     }));
@@ -74,27 +77,33 @@ export function AdminControlPanel({ onClose, onEnterRoom }: Props) {
   const removeSelectedObject = () => {
     if (!selectedObject) return;
     const next = deleteRoomObject(room, selectedObject.id);
-    setRoom(next);
-    setSelectedObjectId(next.objects[0]?.id ?? null);
+    onRoomChange(next);
+    onSelectedObjectIdChange(next.objects[0]?.id ?? null);
     setMessage(`${selectedObject.id} removed from the draft.`);
   };
 
   const addObject = (catalogId: FurnitureId) => {
     const next = addCatalogObject(room, catalogId, newPosition);
-    setRoom(next);
-    setSelectedObjectId(next.objects[next.objects.length - 1]?.id ?? null);
+    onRoomChange(next);
+    onSelectedObjectIdChange(next.objects[next.objects.length - 1]?.id ?? null);
     setMessage(`${furnitureCatalog[catalogId].id} added to the draft.`);
   };
 
   const publishRoom = () => {
-    saveEditableRoom(room);
-    setMessage('Central Plaza draft published to this browser and reloaded in the live room.');
+    try {
+      saveEditableRoom(room);
+      setSavedRoomJson(exportEditableRoom(room));
+      setMessage('Central Plaza saved in this browser. Reload will keep this version.');
+    } catch {
+      setMessage('Save failed. Browser storage may be blocked or full; the draft is still open.');
+    }
   };
 
   const resetRoom = () => {
     const next = resetEditableRoom(centralPlazaRoom);
-    setRoom(next);
-    setSelectedObjectId(next.objects[0]?.id ?? null);
+    onRoomChange(next);
+    onSelectedObjectIdChange(next.objects[0]?.id ?? null);
+    setSavedRoomJson(exportEditableRoom(next));
     setMessage('Central Plaza local override removed.');
   };
 
@@ -108,12 +117,12 @@ export function AdminControlPanel({ onClose, onEnterRoom }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-[#061116]/96 text-white backdrop-blur-xl" role="dialog" aria-modal="true" aria-label="Human World admin control panel">
+    <div className="fixed inset-x-0 bottom-0 z-[100] h-[62vh] w-full rounded-t-3xl bg-[#061116]/96 text-white shadow-[0_-24px_70px_rgba(0,0,0,.55)] backdrop-blur-xl sm:inset-y-0 sm:left-auto sm:h-auto sm:max-w-[460px] sm:rounded-none sm:shadow-[-24px_0_70px_rgba(0,0,0,.55)]" role="dialog" aria-modal="false" aria-label="Human World admin control panel">
       <div className="flex h-full flex-col">
         <header className="flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-6">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[.24em] text-cyan-300">Human World Admin · v0</p>
-            <h1 className="text-lg font-black sm:text-xl">World operations & public map editor</h1>
+            <p className="text-[10px] font-black uppercase tracking-[.24em] text-cyan-300">Human World Admin · v1</p>
+            <div className="flex items-center gap-2"><h1 className="text-lg font-black">Live Plaza editor</h1><span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${hasUnsavedChanges ? 'bg-amber-300/15 text-amber-200' : 'bg-emerald-300/15 text-emerald-200'}`}>{hasUnsavedChanges ? 'Unsaved' : 'Saved'}</span></div>
           </div>
           <button type="button" onClick={onClose} aria-label="Close admin panel" className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/5 hover:bg-white/10">
             <X size={18}/>
@@ -179,12 +188,13 @@ export function AdminControlPanel({ onClose, onEnterRoom }: Props) {
               </div>
             </section>
           ) : (
-            <section className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[260px_minmax(0,1fr)_320px]">
+            <section className="mx-auto grid max-w-7xl gap-4">
               <aside className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                 <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-black">Plaza objects</h2><span className="text-[10px] text-white/35">{room.objects.length}</span></div>
-                <div className="max-h-[65vh] space-y-1 overflow-auto pr-1">
+                <p className="mb-2 text-[10px] text-cyan-100/55">Select here or click a mobi in the Plaza. Then click a free tile to move it.</p>
+                <div className="max-h-[24vh] space-y-1 overflow-auto pr-1">
                   {room.objects.map((object) => (
-                    <button key={object.id} type="button" onClick={() => setSelectedObjectId(object.id)} className={`w-full rounded-lg border px-2.5 py-2 text-left ${selectedObjectId === object.id ? 'border-cyan-300/45 bg-cyan-300/10' : 'border-transparent bg-black/20 hover:bg-white/5'}`}>
+                    <button key={object.id} type="button" onClick={() => onSelectedObjectIdChange(object.id)} className={`w-full rounded-lg border px-2.5 py-2 text-left ${selectedObjectId === object.id ? 'border-cyan-300/45 bg-cyan-300/10' : 'border-transparent bg-black/20 hover:bg-white/5'}`}>
                       <p className="truncate text-[11px] font-bold">{object.id}</p>
                       <p className="truncate text-[9px] text-white/35">{object.catalogId ?? object.category} · {object.position.x.toFixed(2)}, {object.position.y.toFixed(2)}</p>
                     </button>
@@ -197,7 +207,7 @@ export function AdminControlPanel({ onClose, onEnterRoom }: Props) {
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-amber-300">Central Plaza</p><h2 className="text-base font-black">Selected object</h2></div>
                     <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={publishRoom} className={`${buttonClass} border-emerald-300/25 text-emerald-100`}><span className="flex items-center gap-1.5"><Save size={14}/> Publish locally</span></button>
+                      <button type="button" onClick={publishRoom} className={`${buttonClass} border-emerald-300/25 text-emerald-100`}><span className="flex items-center gap-1.5"><Save size={14}/> Save locally</span></button>
                       <button type="button" onClick={copyRoomJson} className={buttonClass}><span className="flex items-center gap-1.5"><Clipboard size={14}/> Copy JSON</span></button>
                       <button type="button" onClick={resetRoom} className={buttonClass}><span className="flex items-center gap-1.5"><RotateCcw size={14}/> Reset room</span></button>
                     </div>
@@ -241,7 +251,7 @@ export function AdminControlPanel({ onClose, onEnterRoom }: Props) {
                     <input className={fieldClass} type="number" step=".5" value={newPosition.x} aria-label="New object X" onChange={(event) => setNewPosition((current) => ({ ...current, x: Number(event.target.value) || 0 }))}/>
                     <input className={fieldClass} type="number" step=".5" value={newPosition.y} aria-label="New object Y" onChange={(event) => setNewPosition((current) => ({ ...current, y: Number(event.target.value) || 0 }))}/>
                   </div>
-                  <div className="grid max-h-[42vh] grid-cols-2 gap-2 overflow-auto pr-1 sm:grid-cols-3 xl:grid-cols-4">
+                  <div className="grid max-h-[36vh] grid-cols-2 gap-2 overflow-auto pr-1 sm:grid-cols-3">
                     {catalogItems.map(([catalogId, item]) => (
                       <button key={catalogId} type="button" onClick={() => addObject(catalogId as FurnitureId)} className="rounded-xl border border-white/8 bg-black/20 p-2 text-left hover:border-cyan-300/30 hover:bg-white/5">
                         <img src={item.asset} alt="" className="h-16 w-full object-contain"/>

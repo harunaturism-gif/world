@@ -14,6 +14,13 @@ import type { PlayerSpeech, RoomAvatarDefinition, RoomDefinition, RoomObjectDefi
 import { worldAssets } from './worldManifest';
 import { DevCatalogInspector } from './DevCatalogInspector';
 
+export interface RoomEditorController {
+  enabled: boolean;
+  selectedObjectId: string | null;
+  onSelectObject: (objectId: string) => void;
+  onMoveObject: (objectId: string, position: IsoPoint) => void;
+}
+
 interface Props {
   room: RoomDefinition;
   onInteract: (message: string) => void;
@@ -21,6 +28,7 @@ interface Props {
   onOpenProfile?: (username: string) => void;
   onPresenceUpdate?: (count: number) => void;
   playerSpeech?: PlayerSpeech | null;
+  editor?: RoomEditorController;
 }
 
 interface Actor {
@@ -62,7 +70,7 @@ interface SceneRuntime { say: (text: string) => void; execute: (selection: RoomS
 
 const snapToTile = (point: IsoPoint): IsoPoint => ({ x: Math.round(point.x * 2) / 2, y: Math.round(point.y * 2) / 2 });
 
-export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfile, onPresenceUpdate, playerSpeech }: Props) {
+export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfile, onPresenceUpdate, playerSpeech, editor }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const runtime = useRef<SceneRuntime | null>(null);
   const [selection, setSelection] = useState<RoomSelection | null>(null);
@@ -135,6 +143,8 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
     let player: Actor;
 
     const keyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
       const key = event.key.toLowerCase();
       if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) event.preventDefault();
       keys.add(key);
@@ -201,6 +211,10 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
 
       const insideFloor = (point: IsoPoint) => Boolean(geometry.cellAt(point));
       const blocked = (point: IsoPoint) => geometry.isBlocked(point, collisionObjects);
+      const blockedForEditor = (point: IsoPoint) => geometry.isBlocked(
+        point,
+        collisionObjects.filter((object) => object.id !== editor?.selectedObjectId),
+      );
       const releaseSeat = (actor: Actor) => {
         if (!actor.seatId) return;
         if (seatOccupants.get(actor.seatId) === actor.id) seatOccupants.delete(actor.seatId);
@@ -218,6 +232,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       const foregroundLayer = new PIXI.Container();
       foregroundLayer.sortableChildren = true;
 
+      const editableObjectIds = new Set(room.objects.map((object) => object.id));
       const renderObjects = [...(room.contextObjects ?? []), ...room.objects];
       renderObjects.forEach((definition, index) => {
         const node = new PIXI.Container();
@@ -267,7 +282,20 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           node.addChild(contentNode);
         }
 
-        if (definition.interaction) {
+        if (editor?.enabled && editableObjectIds.has(definition.id)) {
+          sprite.eventMode = 'static';
+          sprite.cursor = 'pointer';
+          sprite.on('pointerover', () => { node.scale.set(1.035); });
+          sprite.on('pointerout', () => { node.scale.set(1); });
+          sprite.on('pointertap', (event) => {
+            event.stopPropagation();
+            placeSelectionRing(definition.position);
+            setSelection(null);
+            editor.onSelectObject(definition.id);
+            onInteract(`${definition.id} selected. Click a free tile to move it.`);
+          });
+          if (editor.selectedObjectId === definition.id) placeSelectionRing(definition.position);
+        } else if (definition.interaction) {
           const badge = new PIXI.Graphics();
           badge.beginFill(0x172238, 0.9);
           badge.lineStyle(2, 0xffe38a, 0.62);
@@ -632,6 +660,15 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       scene.on('pointertap', (event) => {
         if (dragged) { dragged = false; return; }
         const target = snapToTile(screenToIso(event.getLocalPosition(scene)));
+        if (editor?.enabled && editor.selectedObjectId) {
+          if (insideFloor(target) && !blockedForEditor(target)) {
+            editor.onMoveObject(editor.selectedObjectId, target);
+            onInteract(`${editor.selectedObjectId} moved to ${target.x}, ${target.y}. Save to keep the change.`);
+          } else {
+            onInteract('That tile cannot hold the selected object. Choose a free floor tile.');
+          }
+          return;
+        }
         if (!blocked(target) && routeActor(player, target)) {
           pendingInteraction = null;
           placeSelectionRing(target);
@@ -752,7 +789,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       hostElement.replaceChildren();
       app.destroy(true, { children: true });
     };
-  }, [onEnterRoom, onInteract, onOpenProfile, onPresenceUpdate, room]);
+  }, [editor, onEnterRoom, onInteract, onOpenProfile, onPresenceUpdate, room]);
 
   return (
     <div className="relative h-full w-full">
@@ -760,7 +797,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       <div className="absolute left-3 top-16 z-10 rounded-full border border-amber-100/15 bg-[#102a31]/82 px-3 py-1.5 text-[10px] font-bold text-amber-50 shadow-lg backdrop-blur-md sm:text-[11px]">
         <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(74,222,128,.7)]" />{room.ui.subtitle}
       </div>
-      <div className="absolute right-3 top-3 z-20 flex gap-0.5 rounded-full border border-white/10 bg-[#10252d]/72 p-1 shadow-lg backdrop-blur transition-opacity md:opacity-70 md:hover:opacity-100">
+      <div className="absolute right-14 top-16 z-20 flex gap-0.5 rounded-full border border-white/10 bg-[#10252d]/72 p-1 shadow-lg backdrop-blur transition-opacity md:opacity-70 md:hover:opacity-100">
         <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => runtime.current?.zoomBy(-0.1)} className="grid h-8 w-8 place-items-center rounded-full text-amber-100 hover:bg-white/10"><Minus size={15} /></button>
         <button type="button" aria-label="Recenter camera" title="Recenter" onClick={() => runtime.current?.recenter()} className="grid h-8 w-8 place-items-center rounded-full text-white/80 hover:bg-white/10"><LocateFixed size={15} /></button>
         <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => runtime.current?.zoomBy(0.1)} className="grid h-8 w-8 place-items-center rounded-full text-amber-100 hover:bg-white/10"><Plus size={15} /></button>
