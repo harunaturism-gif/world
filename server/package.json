@@ -4,7 +4,7 @@
     "description":  "",
     "main":  "index.js",
     "scripts":  {
-                    "test":  "echo \"Error: no test specified\" \u0026\u0026 exit 1",
+                    "test":  "npm run build && node --test authSession.test.js",
                     "build":  "tsc -p tsconfig.json",
                     "start":  "node index.js"
                 },

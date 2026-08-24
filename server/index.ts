@@ -4,6 +4,12 @@ import http from 'http';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import {
+  createSessionRpContext,
+  getVerifiedWorldSession,
+  isValidProofPayload,
+  isValidWorldRpId,
+} from './authSession.js';
 
 dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
 
@@ -11,8 +17,6 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-
-import { signRequest } from '@worldcoin/idkit-core/signing';
 
 app.use(express.json());
 
@@ -33,97 +37,84 @@ app.use(express.json());
 
 
 
-// RP Signature for IDKit initialization
-app.post('/api/auth/rp-signature', async (req, res) => {
+// Session proofs use an RP signature without an action. Action-bound signatures
+// belong to uniqueness proofs and must not influence this endpoint.
+app.post('/api/auth/session-rp-context', (_req, res) => {
+  const signingKey = process.env.WORLD_RP_SIGNING_KEY;
+  const rpId = process.env.WORLD_RP_ID;
+
+  if (!signingKey || !isValidWorldRpId(rpId)) {
+    return res.status(500).json({ error: 'Server authentication is not configured' });
+  }
+
   try {
-    const { action } = req.body;
-
-    // Server strictly controls the action. It does NOT trust the client string.
-    if (!process.env.WORLD_ID_ACTION) {
-       return res.status(500).json({ error: "Server missing WORLD_ID_ACTION configuration" });
-    }
-    const expectedAction = process.env.WORLD_ID_ACTION;
-    if (action !== expectedAction) {
-       return res.status(400).json({ error: "Invalid action requested" });
-    }
-
-    if (!process.env.WORLD_RP_SIGNING_KEY) {
-       return res.status(500).json({ error: "Server missing RP_SIGNING_KEY credentials" });
-    }
-
-    const rp_id = process.env.WORLD_RP_ID;
-    if (!rp_id || !rp_id.startsWith("rp_")) {
-       return res.status(500).json({ error: "Server missing or invalid WORLD_RP_ID configuration" });
-    }
-
-    const { sig, nonce, createdAt, expiresAt } = signRequest({
-      signingKeyHex: process.env.WORLD_RP_SIGNING_KEY,
-      action: expectedAction,
-    });
-
-    return res.json({
-      sig,
-      nonce,
-      created_at: createdAt,
-      expires_at: expiresAt,
-      rp_id
-    });
-  } catch (error) {
-    console.error("RP Sign error", error);
-    return res.status(500).json({ error: "Failed to sign request" });
+    return res.json(createSessionRpContext(signingKey, rpId));
+  } catch {
+    console.error('Session RP context generation failed');
+    return res.status(500).json({ error: 'Failed to create session RP context' });
   }
 });
+
 // Auth Bridge: World ID Verification
 app.post('/api/auth/verify', async (req, res) => {
-  const { proof } = req.body;
+  const proof = req.body?.proof;
 
-  if (!proof) {
-    return res.status(400).json({ error: 'Missing proof payload from client' });
+  if (!isValidProofPayload(proof)) {
+    return res.status(400).json({ error: 'Invalid proof payload' });
   }
 
-  const rp_id = process.env.WORLD_RP_ID;
-  if (!rp_id) {
-    return res.status(500).json({ error: 'Server missing WORLD_RP_ID credentials' });
+  const rpId = process.env.WORLD_RP_ID;
+  if (!isValidWorldRpId(rpId)) {
+    return res.status(500).json({ error: 'Server authentication is not configured' });
   }
+
+  const controller = new AbortController();
+  const verificationTimeout = setTimeout(() => controller.abort(), 10_000);
 
   try {
-    const response = await fetch(`https://developer.world.org/api/v4/verify/${rp_id}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
+    const response = await fetch(`https://developer.world.org/api/v4/verify/${rpId}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify(proof),
+      signal: controller.signal,
     });
 
-    if (response.ok) {
-      const verifyData = await response.json();
-
-      // Trust ONLY the verified World API response, never the client proof identity
-      if (verifyData.success !== true || !verifyData.session_id) {
-        console.error("Verification succeeded but no valid session_id returned by World API.");
-        return res.status(400).json({ error: "Unusable verified payload structure. Missing session_id." });
-      }
-
-      const verifiedSessionId = verifyData.session_id;
-
-      // Explicit Auth Response Contract
-      return res.json({
-        verified: true,
-        worldIdentity: {
-          sessionId: verifiedSessionId,
-          verification: "proof_of_human" // Assumed constraint enforced during proof generation
-        },
-        user: {
-          id: verifiedSessionId, // Temporary mapped ID until database persistence
-          username: `Human_${verifiedSessionId.substring(verifiedSessionId.length > 6 ? verifiedSessionId.length - 6 : 0).toUpperCase()}`
-        }
-      });
-    } else {
-      const err = await response.text();
-      console.error("World ID verification rejected by World API:", err);
+    if (!response.ok) {
+      await response.body?.cancel();
+      console.error(`World ID verification rejected with status ${response.status}`);
       return res.status(401).json({ error: 'Invalid proof rejected by verification server' });
     }
-  } catch (error) {
-    console.error("World ID API connection error:", error);
-    return res.status(500).json({ error: "Failed to connect to verification server" });
+
+    const verifiedWorldSession = getVerifiedWorldSession(await response.json());
+    if (!verifiedWorldSession) {
+      return res.status(401).json({ error: 'World verification did not satisfy authentication requirements' });
+    }
+
+    const { sessionId, verification } = verifiedWorldSession;
+
+    // SECURITY PHASE BOUNDARY: this compatibility response does not issue an
+    // authenticated application session. The World session_id is temporarily
+    // exposed as the user ID. This remains NO-GO for beta until app sessions exist.
+    return res.json({
+      verified: true,
+      worldIdentity: {
+        sessionId,
+        verification,
+      },
+      user: {
+        id: sessionId,
+        username: `Human_${sessionId.slice(-6).toUpperCase()}`,
+      },
+    });
+  } catch {
+    if (controller.signal.aborted) {
+      return res.status(504).json({ error: 'World verification timed out' });
+    }
+
+    console.error('World ID verification request failed');
+    return res.status(502).json({ error: 'World verification service unavailable' });
+  } finally {
+    clearTimeout(verificationTimeout);
   }
 });
 
