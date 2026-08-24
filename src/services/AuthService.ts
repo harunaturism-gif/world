@@ -1,6 +1,13 @@
 import { MiniKit } from '@worldcoin/minikit-js';
 import { IDKit, CredentialRequest, any } from '@worldcoin/idkit-core';
 
+function isValidWorldRpId(value: unknown): value is string {
+  return typeof value === 'string'
+    && value === value.trim()
+    && value.startsWith('rp_')
+    && value.length > 3;
+}
+
 export const AuthService = {
   async authenticate(): Promise<any | null> {
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
@@ -25,21 +32,19 @@ export const AuthService = {
     const storedSession = localStorage.getItem('world_session_id');
 
     try {
-      // Fetch RP Signature from backend first.
-      const rpSigRes = await fetch(`${backendUrl}/api/auth/rp-signature`, {
+      // Session proofs require an actionless RP-context signature from the backend.
+      const rpSigRes = await fetch(`${backendUrl}/api/auth/session-rp-context`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'human-world-login' }),
       });
 
       if (!rpSigRes.ok) {
-        console.error('Server missing credentials or action rejected.');
+        console.error('Server could not create a session RP context.');
         return null;
       }
 
       const rpSig = await rpSigRes.json();
-      if (!rpSig.rp_id) {
-        console.error('Backend failed to provide RP ID.');
+      if (!isValidWorldRpId(rpSig.rp_id)) {
+        console.error('Backend provided an invalid World RP ID.');
         return null;
       }
 
@@ -94,11 +99,11 @@ export const AuthService = {
             return authData.user;
           }
         } else {
-          console.error('Backend World verification failed', await verifyRes.text());
+          console.error('Backend World verification failed.');
         }
       }
-    } catch (error) {
-      console.error('IDKit Auth error', error);
+    } catch {
+      console.error('IDKit authentication failed.');
     }
 
     return null;
