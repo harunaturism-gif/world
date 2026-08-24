@@ -121,7 +121,7 @@ function App() {
           {currentView === 'FEED' && <SocialFeed onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
           {currentView === 'DISCOVERY' && <Discovery onEnterRoom={handleEnterRoom} />}
           {currentView === 'SUPPORT' && <SupportHumanWorld />}
-          {currentView === 'PROFILE' && <Profile username={currentUser.username} currentUserId={currentUser.id} />}
+          {currentView === 'PROFILE' && <Profile isOwnProfile username={currentUser.username} currentUserId={currentUser.id} />}
         </React.Suspense>
 
         {/* Modals */}
@@ -286,7 +286,7 @@ function MoreMenu({ onClose, onSearch, onNotifications, onProfile, onSupport }: 
   ];
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end bg-black/55 backdrop-blur-sm sm:hidden" role="presentation" onMouseDown={onClose}>
+    <div className="fixed inset-0 flex items-end bg-black/55 backdrop-blur-sm sm:hidden" role="presentation" style={{ zIndex: 70 }} onMouseDown={onClose}>
       <section
         aria-labelledby="more-menu-title"
         aria-modal="true"

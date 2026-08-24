@@ -1,161 +1,205 @@
-import { ShieldCheck, Activity, MapPin, Building, X } from 'lucide-react';
+import { Building2, Loader2, RefreshCw, ShieldCheck, Sparkles, UserPlus, UserRoundCheck, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { ProfileService, ProfileData } from '../../services/ProfileService';
+import type { ReactNode } from 'react';
+import { ProfileService } from '../../services/ProfileService';
+import type { ProfileData } from '../../services/ProfileService';
 
 interface ProfileProps {
   username?: string;
   onClose?: () => void;
-  currentUserId?: string; // Passed from context/App ideally, omitted for brevity but used for toggling follow
+  currentUserId?: string;
+  isOwnProfile?: boolean;
 }
 
-export function Profile({ username = "Citizen_0x89", onClose, currentUserId }: ProfileProps) {
+type ProfileStatus = 'error' | 'loading' | 'ready';
+
+function ProfileSurface({ children, onClose }: { children: ReactNode; onClose?: () => void }) {
+  return (
+    <div className="absolute inset-0 z-50 overflow-y-auto bg-zinc-950 pb-16 pt-safe text-white">
+      <div className="relative mx-auto max-w-md p-4 pt-8">
+        {onClose ? (
+          <button type="button" onClick={onClose} aria-label="Close profile" className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white">
+            <X aria-hidden="true" size={20}/>
+          </button>
+        ) : null}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function Profile({ username = 'Citizen_0x89', onClose, currentUserId, isOwnProfile = false }: ProfileProps) {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [followers, setFollowers] = useState(0);
   const [following, setFollowing] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<ProfileStatus>('loading');
+  const [reloadToken, setReloadToken] = useState(0);
+  const [followPending, setFollowPending] = useState(false);
+  const [followError, setFollowError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadProfile() {
-      setLoading(true);
-      const data = await ProfileService.getProfile(username);
-      if (data) {
-        setProfile(data);
-        const fCount = await ProfileService.getFollowersCount(data.id);
-        const followingCount = await ProfileService.getFollowingCount(data.id);
-        setFollowers(fCount);
-        setFollowing(followingCount);
+    let active = true;
+    setStatus('loading');
+    setFollowError(null);
 
-        if (currentUserId && currentUserId !== data.id) {
-          const followStatus = await ProfileService.checkIsFollowing(currentUserId, data.id);
-          setIsFollowing(followStatus);
-        }
+    async function loadProfile() {
+      try {
+        const data = await ProfileService.getProfile(username);
+        if (!data) throw new Error('Profile missing');
+
+        const viewingOwnProfile = isOwnProfile || currentUserId === data.id;
+        const [followersCount, followingCount, followStatus] = await Promise.all([
+          ProfileService.getFollowersCount(data.id),
+          ProfileService.getFollowingCount(data.id),
+          currentUserId && !viewingOwnProfile
+            ? ProfileService.checkIsFollowing(currentUserId, data.id)
+            : Promise.resolve(false),
+        ]);
+
+        if (!active) return;
+        setProfile(data);
+        setFollowers(followersCount);
+        setFollowing(followingCount);
+        setIsFollowing(followStatus);
+        setStatus('ready');
+      } catch {
+        if (!active) return;
+        setStatus('error');
       }
-      setLoading(false);
     }
-    loadProfile();
-  }, [username, currentUserId]);
+
+    void loadProfile();
+    return () => {
+      active = false;
+    };
+  }, [currentUserId, isOwnProfile, reloadToken, username]);
 
   const handleFollowToggle = async () => {
-    if (!profile || !currentUserId) return;
-    const success = await ProfileService.toggleFollow(currentUserId, profile.id, isFollowing);
-    if (success) {
-      setFollowers(prev => isFollowing ? prev - 1 : prev + 1);
-      setIsFollowing(!isFollowing);
+    if (!profile || !currentUserId || followPending) return;
+
+    setFollowPending(true);
+    setFollowError(null);
+    try {
+      const success = await ProfileService.toggleFollow(currentUserId, profile.id, isFollowing);
+      if (!success) throw new Error('Follow rejected');
+
+      setFollowers((current) => isFollowing ? Math.max(0, current - 1) : current + 1);
+      setIsFollowing((current) => !current);
+    } catch {
+      setFollowError('That connection could not be updated. Please try again.');
+    } finally {
+      setFollowPending(false);
     }
   };
 
-  if (loading) {
+  if (status === 'loading') {
     return (
-      <div className="absolute inset-0 bg-zinc-950 overflow-y-auto pt-safe pb-16 z-50 flex justify-center items-center">
-        <div className="text-white">Loading...</div>
-      </div>
+      <ProfileSurface onClose={onClose}>
+        <div className="flex min-h-[60vh] flex-col items-center justify-center text-zinc-400" role="status">
+          <Loader2 aria-hidden="true" className="mb-3 animate-spin text-cyan-300" size={26}/>
+          <p className="text-sm">Loading profile…</p>
+        </div>
+      </ProfileSurface>
     );
   }
 
-  // Fallback to mock data if no DB profile is found for development
-  const displayUsername = profile?.username || username;
-  const displayBio = profile?.bio || "A new human in the World.";
-  const displayXp = profile?.xp || 12;
+  if (status === 'error' || !profile) {
+    return (
+      <ProfileSurface onClose={onClose}>
+        <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
+          <p className="font-semibold text-zinc-200">This profile could not load.</p>
+          <p className="mt-1 text-sm text-zinc-500">Check your connection and try again.</p>
+          <button type="button" onClick={() => setReloadToken((value) => value + 1)} className="mt-5 inline-flex items-center gap-2 rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-900">
+            <RefreshCw aria-hidden="true" size={15}/>
+            Retry
+          </button>
+        </div>
+      </ProfileSurface>
+    );
+  }
+
+  const viewingOwnProfile = isOwnProfile || currentUserId === profile.id;
+  const displayBio = profile.bio?.trim() || 'A new human in the World.';
 
   return (
-    <div className="absolute inset-0 bg-zinc-950 overflow-y-auto pt-safe pb-16 z-50">
-      <div className="max-w-md mx-auto p-4 pt-8 relative">
+    <ProfileSurface onClose={onClose}>
+      <header className="mb-5 mt-4 flex items-center gap-4 pr-10">
+        <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-800 shadow-xl">
+          {profile.avatar_url ? (
+            <img src={profile.avatar_url} alt={`${profile.username}'s avatar`} className="h-full w-full object-cover" />
+          ) : (
+            <>
+              <div aria-hidden="true" className="absolute inset-0 bg-blue-500/10" />
+              <span aria-hidden="true" className="text-3xl font-bold text-zinc-500">{profile.username.charAt(0).toUpperCase()}</span>
+            </>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-[.16em] text-cyan-300/65">Human profile</p>
+          <h1 className="truncate text-2xl font-bold tracking-tight text-white">{profile.username}</h1>
+          {profile.verification_status ? (
+            <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-blue-400">
+              <ShieldCheck aria-hidden="true" size={16}/>
+              World ID verified
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-zinc-500">Verification pending</p>
+          )}
+        </div>
+      </header>
 
-        {onClose && (
+      {viewingOwnProfile ? (
+        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('open-avatar-customizer'))} className="mb-6 w-full rounded-xl bg-zinc-800 py-2.5 text-sm font-semibold text-white hover:bg-zinc-700">
+          Customize avatar
+        </button>
+      ) : null}
+
+      <p className="mb-5 text-sm leading-relaxed text-zinc-300">{displayBio}</p>
+
+      <dl className="mb-6 flex gap-5 text-sm">
+        <div className="text-white"><dt className="inline text-zinc-500">Following </dt><dd className="inline font-bold">{following}</dd></div>
+        <div className="text-white"><dt className="inline text-zinc-500">Followers </dt><dd className="inline font-bold">{followers}</dd></div>
+      </dl>
+
+      {!viewingOwnProfile && currentUserId ? (
+        <div className="mb-8">
           <button
-            onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-full hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
-          >
-            <X size={20} />
-          </button>
-        )}
-
-        {/* Profile Header */}
-        <div className="flex items-center gap-4 mb-4 mt-4">
-          <div className="w-20 h-20 bg-zinc-800 rounded-2xl flex items-center justify-center border border-zinc-700 shadow-xl relative overflow-hidden shrink-0">
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt={displayUsername} className="w-full h-full object-cover" />
-            ) : (
-              <>
-                <div className="absolute inset-0 bg-blue-500/10" />
-                <span className="text-3xl font-bold text-zinc-500">{displayUsername.charAt(0).toUpperCase()}</span>
-              </>
-            )}
-          </div>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-white tracking-tight">{displayUsername}</h1>
-            <div className="flex items-center gap-1.5 text-blue-400 text-sm font-medium mt-1 mb-2">
-              <ShieldCheck size={16} />
-              World ID Verified
-            </div>
-          </div>
-        </div>
-
-        {currentUserId && profile && currentUserId === profile.id && (
-          <button onClick={() => window.dispatchEvent(new CustomEvent('open-avatar-customizer'))} className="w-full py-2 bg-zinc-800 text-white rounded-xl mb-6 hover:bg-zinc-700">Customize Avatar</button>
-        )}
-
-        <div className="text-zinc-300 text-sm mb-6">
-          {displayBio}
-        </div>
-
-        <div className="flex gap-4 mb-6 text-sm">
-          <div className="text-white"><span className="font-bold">{following}</span> <span className="text-zinc-500">Following</span></div>
-          <div className="text-white"><span className="font-bold">{followers}</span> <span className="text-zinc-500">Followers</span></div>
-        </div>
-
-        {currentUserId && profile && currentUserId !== profile.id && (
-          <button
+            type="button"
+            aria-pressed={isFollowing}
+            disabled={followPending}
             onClick={handleFollowToggle}
-            className={`w-full py-2 rounded-full font-medium mb-8 transition-colors ${
-              isFollowing
-                ? 'bg-zinc-800 text-white border border-zinc-700 hover:bg-zinc-700'
-                : 'bg-white text-black hover:bg-zinc-200'
-            }`}
+            className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-full font-semibold transition-colors disabled:cursor-wait disabled:opacity-65 ${isFollowing ? 'border border-zinc-700 bg-zinc-800 text-white hover:bg-zinc-700' : 'bg-white text-black hover:bg-zinc-200'}`}
           >
-            {isFollowing ? 'Following' : 'Follow'}
+            {followPending ? <Loader2 aria-hidden="true" className="animate-spin" size={17}/> : isFollowing ? <UserRoundCheck aria-hidden="true" size={17}/> : <UserPlus aria-hidden="true" size={17}/>}
+            {followPending ? 'Updating…' : isFollowing ? 'Following' : 'Follow'}
           </button>
-        )}
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-4 mb-8">
-          <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl">
-            <div className="text-zinc-500 text-xs font-medium uppercase tracking-wider mb-1">XP Level</div>
-            <div className="text-2xl font-bold text-white">{displayXp}</div>
-          </div>
-          <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl">
-            <div className="text-zinc-500 text-xs font-medium uppercase tracking-wider mb-1">HUM Balance</div>
-            <div className="text-2xl font-bold text-white">450</div>
-          </div>
+          <div aria-live="polite" className="min-h-5 pt-2 text-center text-xs text-rose-300">{followError}</div>
         </div>
+      ) : null}
 
-        {/* Assets Section */}
-        <h2 className="text-white font-semibold mb-4 flex items-center gap-2">
-          <Building size={18} />
-          Owned Spaces
+      <section aria-label="Profile progress" className="mb-8 grid grid-cols-2 gap-4">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Level</p>
+          <p className="text-2xl font-bold text-white">{profile.level ?? 1}</p>
+        </div>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Experience</p>
+          <p className="text-2xl font-bold text-white">{profile.xp ?? 0} <span className="text-xs font-medium text-zinc-500">XP</span></p>
+        </div>
+      </section>
+
+      <section aria-labelledby="owned-spaces-title">
+        <h2 id="owned-spaces-title" className="mb-4 flex items-center gap-2 font-semibold text-white">
+          <Building2 aria-hidden="true" size={18}/>
+          Owned spaces
         </h2>
-        <div className="space-y-3">
-          <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex items-start gap-4">
-            <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center text-purple-400 shrink-0">
-              <MapPin size={20} />
-            </div>
-            <div>
-              <h3 className="text-white font-medium">Plot #048192</h3>
-              <p className="text-zinc-400 text-sm mb-2">District 4 • Studio Setup</p>
-              <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-md w-fit">
-                <Activity size={12} />
-                High Activity
-              </div>
-            </div>
-          </div>
-
-          <button className="w-full py-4 border border-dashed border-zinc-700 rounded-2xl text-zinc-500 hover:text-white hover:border-zinc-500 hover:bg-zinc-900 transition-colors flex items-center justify-center gap-2 text-sm font-medium">
-            + Acquire Property
-          </button>
+        <div className="rounded-2xl border border-dashed border-zinc-800 px-5 py-9 text-center">
+          <Sparkles aria-hidden="true" className="mx-auto mb-3 text-zinc-700" size={24}/>
+          <p className="text-sm font-semibold text-zinc-400">No owned spaces yet</p>
+          <p className="mx-auto mt-1 max-w-xs text-xs leading-relaxed text-zinc-600">Verified ownership will appear here when persistent spaces open for the beta.</p>
         </div>
-
-      </div>
-    </div>
+      </section>
+    </ProfileSurface>
   );
 }
