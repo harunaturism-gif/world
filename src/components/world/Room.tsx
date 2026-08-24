@@ -1,15 +1,27 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Users, Info, Coffee, GalleryVerticalEnd, Building2, Settings2 } from 'lucide-react';
-import { AdminControlPanel } from '../admin/AdminControlPanel';
 import { Chat } from '../social/Chat';
-import { CentralPlazaEngine } from './CentralPlazaEngine';
 import { ROOM_MAP_UPDATED_EVENT, RoomService, type RoomData } from '../../services/RoomService';
-import { PropertyInspector } from './PropertyInspector';
 import { InWorldAd } from './InWorldAd';
 import type { PlayerSpeech } from '../../game/roomEngine';
 import { centralPlazaRoom } from '../../game/worldManifest';
 import { loadEditableRoom, updateCatalogObject } from '../../game/adminRoomStore';
 import type { RoomDefinition } from '../../game/roomEngine';
+
+const AdminControlPanel = lazy(() => import('../admin/AdminControlPanel').then((module) => ({ default: module.AdminControlPanel })));
+const CentralPlazaEngine = lazy(() => import('./CentralPlazaEngine').then((module) => ({ default: module.CentralPlazaEngine })));
+const PropertyInspector = lazy(() => import('./PropertyInspector').then((module) => ({ default: module.PropertyInspector })));
+
+function RoomEngineLoading() {
+  return (
+    <div className="absolute inset-0 grid place-items-center bg-[#17343d]" role="status" aria-live="polite">
+      <div className="text-center">
+        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-amber-100/20 border-t-amber-200" />
+        <p className="mt-3 text-xs font-black uppercase tracking-[.18em] text-amber-50/70">Preparing this room</p>
+      </div>
+    </div>
+  );
+}
 
 export interface ChatMessage {
   id: number;
@@ -29,7 +41,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
   const [toast, setToast] = useState<string | null>(null);
   const [presenceCount, setPresenceCount] = useState<number>(1);
   const [incomingMessage] = useState<ChatMessage | null>(null);
-  const [roomData, setRoomData] = useState<RoomData | null>(null);
+  const [roomData, setRoomData] = useState<RoomData>(() => RoomService.getRoom(roomId));
   const [showInspector, setShowInspector] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminRoom, setAdminRoom] = useState<RoomDefinition | null>(null);
@@ -37,6 +49,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
   const [adminDirty, setAdminDirty] = useState(false);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [playerSpeech, setPlayerSpeech] = useState<PlayerSpeech | null>(null);
+  const toastTimer = useRef<number | null>(null);
   const adminEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_ADMIN_PANEL === 'true';
 
   const openAdmin = useCallback(() => {
@@ -69,10 +82,13 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
 
   useEffect(() => {
     const refreshRoomMeta = () => setRoomData(RoomService.getRoom(roomId));
-    refreshRoomMeta();
     window.addEventListener(ROOM_MAP_UPDATED_EVENT, refreshRoomMeta);
     return () => window.removeEventListener(ROOM_MAP_UPDATED_EVENT, refreshRoomMeta);
   }, [roomId]);
+
+  useEffect(() => () => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!adminEnabled) return;
@@ -86,10 +102,16 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
     return () => window.removeEventListener('keydown', toggleAdmin);
   }, [adminEnabled, closeAdmin, openAdmin, showAdmin]);
 
-  const handleInteract = useCallback((message: string) => {
+  const showToast = useCallback((message: string) => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     setToast(message);
-    setTimeout(() => setToast(null), 3000);
+    toastTimer.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimer.current = null;
+    }, 3000);
   }, []);
+
+  const handleInteract = showToast;
 
   const handlePresenceUpdate = useCallback((count: number) => {
     if (count === -1) { setIsDisconnected(true); return; }
@@ -97,7 +119,10 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
     setPresenceCount(count);
   }, []);
 
-  const handleSendChat = useCallback((text: string) => { setPlayerSpeech({ id: Date.now(), text }); setToast(`You said: ${text}`); setTimeout(() => setToast(null), 3000); }, []);
+  const handleSendChat = useCallback((text: string) => {
+    setPlayerSpeech({ id: Date.now(), text });
+    showToast(`You said: ${text}`);
+  }, [showToast]);
 
   return (
     <div className="absolute inset-0 flex flex-col bg-[#10252d]">
@@ -127,16 +152,18 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
       </div>
 
       <div className="flex-1 relative">
-        <CentralPlazaEngine
-          roomType={roomData?.type}
-          onInteract={handleInteract}
-          onEnterRoom={onEnterRoom}
-          onOpenProfile={onOpenProfile}
-          onPresenceUpdate={handlePresenceUpdate}
-          playerSpeech={playerSpeech}
-          roomOverride={adminRoom ?? undefined}
-          editor={editor}
-        />
+        <Suspense fallback={<RoomEngineLoading />}>
+          <CentralPlazaEngine
+            roomType={roomData.type}
+            onInteract={handleInteract}
+            onEnterRoom={onEnterRoom}
+            onOpenProfile={onOpenProfile}
+            onPresenceUpdate={handlePresenceUpdate}
+            playerSpeech={playerSpeech}
+            roomOverride={adminRoom ?? undefined}
+            editor={editor}
+          />
+        </Suspense>
 
         {isDisconnected && (
           <div className="pointer-events-none absolute left-1/2 top-16 z-50 -translate-x-1/2 animate-in rounded-full bg-rose-600 px-4 py-2 text-sm text-white shadow-lg fade-in">
@@ -157,29 +184,31 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
         <button aria-label="Human Gallery" onClick={() => onEnterRoom('human-gallery')} className="rounded-xl border border-white/10 bg-[#102a31]/82 p-2.5 text-pink-200 shadow-lg backdrop-blur transition-colors hover:bg-[#28515a]"><GalleryVerticalEnd size={17}/></button>
       </div>
 
-      {roomData && roomData.type === 'plaza' && <div className="hidden opacity-55 2xl:block"><InWorldAd placementId="central-1" roomName={roomData.name} /></div>}
+      {roomData.type === 'plaza' && <div className="hidden opacity-55 2xl:block"><InWorldAd placementId="central-1" roomName={roomData.name} /></div>}
 
       <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-20 h-16 overflow-visible [&>div]:h-16">
         <Chat onSendMessage={handleSendChat} incomingMessage={incomingMessage} />
       </div>
 
-      {showInspector && roomData && (
-        <PropertyInspector room={roomData} onClose={() => setShowInspector(false)} onEnter={() => setShowInspector(false)} />
-      )}
+      <Suspense fallback={null}>
+        {showInspector ? (
+          <PropertyInspector room={roomData} onClose={() => setShowInspector(false)} />
+        ) : null}
 
-      {showAdmin && adminEnabled && adminRoom && (
-        <AdminControlPanel
-          onClose={closeAdmin}
-          room={adminRoom}
-          selectedObjectId={selectedAdminObjectId}
-          onRoomChange={setAdminRoom}
-          onSelectedObjectIdChange={setSelectedAdminObjectId}
-          onDirtyChange={setAdminDirty}
-          onEnterRoom={(targetRoomId) => {
-            if (closeAdmin()) onEnterRoom(targetRoomId);
-          }}
-        />
-      )}
+        {showAdmin && adminEnabled && adminRoom ? (
+          <AdminControlPanel
+            onClose={closeAdmin}
+            room={adminRoom}
+            selectedObjectId={selectedAdminObjectId}
+            onRoomChange={setAdminRoom}
+            onSelectedObjectIdChange={setSelectedAdminObjectId}
+            onDirtyChange={setAdminDirty}
+            onEnterRoom={(targetRoomId) => {
+              if (closeAdmin()) onEnterRoom(targetRoomId);
+            }}
+          />
+        ) : null}
+      </Suspense>
     </div>
   );
 }

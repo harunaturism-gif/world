@@ -81,6 +81,8 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
   const runtime = useRef<SceneRuntime | null>(null);
   const editorRef = useRef(editor);
   const [selection, setSelection] = useState<RoomSelection | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [loadError, setLoadError] = useState(false);
   editorRef.current = editor;
 
   const runAction = () => {
@@ -103,6 +105,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
   useEffect(() => {
     const hostElement = host.current;
     if (!hostElement) return;
+    setLoadError(false);
     const app = new PIXI.Application({
       resizeTo: hostElement,
       backgroundColor: 0x17343d,
@@ -144,6 +147,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
     const geometry = new RoomGeometry(room.geometry);
     const collisionObjects = [...room.objects, ...(room.contextObjects ?? []).filter((object) => object.collision)];
     const seatOccupants = new Map<string, string>();
+    const timers = new Set<number>();
     let pendingInteraction: { selection: RoomSelection; object: RoomObjectDefinition } | null = null;
     const core = new RoomEngineCore(room.id, {
       staticBlocked: (point) => geometry.isBlocked(point, collisionObjects),
@@ -153,6 +157,13 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
     let disposed = false;
     let removeWheel = () => {};
     let player: Actor;
+    const schedule = (callback: () => void, delay: number) => {
+      const timer = window.setTimeout(() => {
+        timers.delete(timer);
+        if (!disposed) callback();
+      }, delay);
+      timers.add(timer);
+    };
 
     const keyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -162,8 +173,10 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       keys.add(key);
     };
     const keyUp = (event: KeyboardEvent) => keys.delete(event.key.toLowerCase());
-    addEventListener('keydown', keyDown);
-    addEventListener('keyup', keyUp);
+    const clearKeys = () => keys.clear();
+    window.addEventListener('keydown', keyDown);
+    window.addEventListener('keyup', keyUp);
+    window.addEventListener('blur', clearKeys);
 
     void (async () => {
       const floorAssets = Object.values(room.floor.materials).flat();
@@ -536,7 +549,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         if (interaction.action === 'enter-room' && interaction.targetId) {
           onInteract(`Entering ${interaction.title}...`);
           showSpeech(player, `Let's go to ${interaction.title}.`);
-          window.setTimeout(() => onEnterRoom?.(interaction.targetId!), 260);
+          schedule(() => onEnterRoom?.(interaction.targetId!), 260);
           return;
         }
         if (interaction.action === 'sit' && object.seat) {
@@ -583,7 +596,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           onInteract(`${interaction.actionLabel}: ${interaction.title}`);
           showSpeech(player, interaction.actionLabel);
         }
-        window.setTimeout(() => {
+        schedule(() => {
           if (player.user.pose === 'interacting') core.setUserPose(player.id, 'stand');
         }, 850);
       };
@@ -798,22 +811,35 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
         }
         layout();
       });
-    })();
+    })().catch(() => {
+      if (!disposed) setLoadError(true);
+    });
 
     return () => {
       disposed = true;
       runtime.current = null;
-      removeEventListener('keydown', keyDown);
-      removeEventListener('keyup', keyUp);
+      timers.forEach((timer) => window.clearTimeout(timer));
+      window.removeEventListener('keydown', keyDown);
+      window.removeEventListener('keyup', keyUp);
+      window.removeEventListener('blur', clearKeys);
       removeWheel();
       hostElement.replaceChildren();
       app.destroy(true, { children: true });
     };
-  }, [onEnterRoom, onInteract, onOpenProfile, onPresenceUpdate, room]);
+  }, [loadAttempt, onEnterRoom, onInteract, onOpenProfile, onPresenceUpdate, room]);
 
   return (
     <div className="relative h-full w-full">
       <div ref={host} className="absolute inset-0 touch-none" />
+      {loadError ? (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-[#10252d]/95 p-6 text-center" role="alert">
+          <div>
+            <p className="font-black text-amber-50">This room could not finish loading.</p>
+            <p className="mt-1 text-sm text-white/55">A visual resource was unavailable. You can retry safely.</p>
+            <button type="button" onClick={() => setLoadAttempt((attempt) => attempt + 1)} className="mt-5 rounded-xl bg-amber-200 px-4 py-2.5 text-sm font-black text-[#10252d] hover:bg-amber-100">Retry room</button>
+          </div>
+        </div>
+      ) : null}
       <div className="absolute left-3 top-16 z-10 rounded-full border border-amber-100/15 bg-[#102a31]/82 px-3 py-1.5 text-[10px] font-bold text-amber-50 shadow-lg backdrop-blur-md sm:text-[11px]">
         <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(74,222,128,.7)]" />{room.ui.subtitle}
       </div>

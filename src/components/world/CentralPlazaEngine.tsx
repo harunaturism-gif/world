@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as PIXI from 'pixi.js';
-import { AvatarService, AvatarState } from '../../services/AvatarService';
+import { AvatarService } from '../../services/AvatarService';
+import type { AvatarState } from '../../services/AvatarService';
 import { VisualPlazaPrototype } from '../../game/VisualPlazaPrototype';
 import type { RoomEditorController } from '../../game/IsometricRoomEngine';
 import type { PlayerSpeech, RoomDefinition } from '../../game/roomEngine';
@@ -41,10 +42,28 @@ function PrimitiveCentralPlazaEngine({ roomType = 'plaza', onInteract, onOpenPro
     const residents = [{ name: 'Alex', x: -145, y: 120, state: { baseColor: 0xc88161, hairColor: 0x1c253b, outfitColor: 0x4ecdc4, accessoryColor: 0xffd166, hair: 'short' as const } }, { name: 'Maya', x: 145, y: 155, state: { baseColor: 0x8c543b, hairColor: 0x332549, outfitColor: 0xff70a6, accessoryColor: 0x70d6ff, hair: 'wave' as const } }, { name: 'Leo', x: -230, y: -5, state: { baseColor: 0xe2ad82, hairColor: 0x54362b, outfitColor: 0xff9f43, accessoryColor: 0xffffff, hair: 'buzz' as const } }, { name: 'Sofia', x: 230, y: -5, state: { baseColor: 0xf2c3a8, hairColor: 0x26356e, outfitColor: 0x8b5cf6, accessoryColor: 0xffd166, hair: 'wave' as const } }];
     residents.forEach((r) => { const a = avatar(r.state, r.name); a.x = r.x; a.y = r.y; interactive(a, () => onOpenProfile?.(r.name)); world.addChild(a); }); onPresenceUpdate?.(residents.length + 1);
     let target = { x: player.x, y: player.y }; floor.eventMode = 'static'; floor.on('pointertap', (e) => { const p = e.getLocalPosition(world); target = { x: Math.max(-475, Math.min(475, p.x)), y: Math.max(-315, Math.min(315, p.y)) }; });
-    const keys = new Set<string>(); const down = (e: KeyboardEvent) => keys.add(e.key.toLowerCase()); const up = (e: KeyboardEvent) => keys.delete(e.key.toLowerCase()); addEventListener('keydown', down); addEventListener('keyup', up);
+    const keys = new Set<string>();
+    const down = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      const key = event.key.toLowerCase();
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) event.preventDefault();
+      keys.add(key);
+    };
+    const up = (event: KeyboardEvent) => keys.delete(event.key.toLowerCase());
+    const clearKeys = () => keys.clear();
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', clearKeys);
     const resize = () => { world.x = app.screen.width / 2; world.y = app.screen.height / 2 + 18; const s = Math.min(app.screen.width / 1000, app.screen.height / 700, 1); world.scale.set(s); }; app.renderer.on('resize', resize); resize();
     app.ticker.add(() => { const speed = 3.6; if (keys.has('arrowleft') || keys.has('a')) target.x -= speed; if (keys.has('arrowright') || keys.has('d')) target.x += speed; if (keys.has('arrowup') || keys.has('w')) target.y -= speed; if (keys.has('arrowdown') || keys.has('s')) target.y += speed; target.x = Math.max(-475, Math.min(475, target.x)); target.y = Math.max(-315, Math.min(315, target.y)); player.x += (target.x - player.x) * .12; player.y += (target.y - player.y) * .12; });
-    return () => { removeEventListener('keydown', down); removeEventListener('keyup', up); app.destroy(true, { children: true }); };
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', clearKeys);
+      app.renderer.off('resize', resize);
+      app.destroy(true, { children: true });
+    };
   }, [roomType, onInteract, onOpenProfile, onPresenceUpdate]);
-  return <div className="relative h-full w-full"><div ref={host} className="absolute inset-0 touch-none"/><div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-slate-950/70 px-4 py-2 text-xs font-medium text-white/85 backdrop-blur pointer-events-none">Click to walk · Arrow keys / WASD · Tap residents and glowing objects</div></div>;
+  return <div className="relative h-full w-full"><div ref={host} className="absolute inset-0 touch-none"/><div className="pointer-events-none absolute bottom-4 left-1/2 hidden -translate-x-1/2 rounded-full bg-slate-950/70 px-4 py-2 text-xs font-medium text-white/85 backdrop-blur sm:block">Click to walk · Arrow keys / WASD · Tap residents and glowing objects</div></div>;
 }

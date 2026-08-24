@@ -5,7 +5,9 @@ import type { SearchResultType } from './components/social/GlobalSearch';
 
 const AuthOverlay = React.lazy(() => import('./components/auth/AuthOverlay').then((module) => ({ default: module.AuthOverlay })));
 const WorldMap = React.lazy(() => import('./components/world/WorldMap').then((module) => ({ default: module.WorldMap })));
-const Room = React.lazy(() => import('./components/world/Room').then((module) => ({ default: module.Room })));
+const loadRoomModule = () => import('./components/world/Room');
+const loadRoomEngineModule = () => import('./components/world/CentralPlazaEngine');
+const Room = React.lazy(() => loadRoomModule().then((module) => ({ default: module.Room })));
 const SocialFeed = React.lazy(() => import('./components/social/SocialFeed').then((module) => ({ default: module.SocialFeed })));
 const Profile = React.lazy(() => import('./components/social/Profile').then((module) => ({ default: module.Profile })));
 const Discovery = React.lazy(() => import('./components/social/Discovery').then((module) => ({ default: module.Discovery })));
@@ -13,6 +15,11 @@ const SupportHumanWorld = React.lazy(() => import('./components/meta/SupportHuma
 const GlobalSearch = React.lazy(() => import('./components/social/GlobalSearch').then((module) => ({ default: module.GlobalSearch })));
 const Notifications = React.lazy(() => import('./components/social/Notifications').then((module) => ({ default: module.Notifications })));
 const AvatarCustomizer = React.lazy(() => import('./components/social/AvatarCustomizer').then((module) => ({ default: module.AvatarCustomizer })));
+
+function preloadRoomExperience() {
+  void loadRoomModule();
+  void loadRoomEngineModule();
+}
 
 type ViewState = 'MAP' | 'ROOM' | 'FEED' | 'PROFILE' | 'DISCOVERY' | 'SUPPORT';
 
@@ -44,11 +51,13 @@ function App() {
   const inRoom = currentView === 'ROOM';
 
   const handleEnterRoom = (roomId: string) => {
+    preloadRoomExperience();
     setCurrentRoomId(roomId);
     setCurrentView('ROOM');
   };
 
   const handleEnterWorld = (user: Exclude<CurrentUser, null>) => {
+    preloadRoomExperience();
     setCurrentUser(user);
     setCurrentRoomId('central-plaza');
     setCurrentView('ROOM');
@@ -116,7 +125,7 @@ function App() {
         <React.Suspense fallback={<LoadingSurface label="Loading this space"/>}>
           {currentView === 'MAP' && <WorldMap onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
           {currentView === 'ROOM' && currentRoomId && (
-            <Room roomId={currentRoomId} onLeave={handleLeaveRoom} onEnterRoom={handleEnterRoom} onOpenProfile={handleOpenProfile} />
+            <Room key={currentRoomId} roomId={currentRoomId} onLeave={handleLeaveRoom} onEnterRoom={handleEnterRoom} onOpenProfile={handleOpenProfile} />
           )}
           {currentView === 'FEED' && <SocialFeed onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
           {currentView === 'DISCOVERY' && <Discovery onEnterRoom={handleEnterRoom} />}

@@ -1,66 +1,94 @@
-import { X, Building } from 'lucide-react';
-import { RoomData } from '../../services/RoomService';
+import { Building, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { LandService, LandPlot } from '../../services/LandService';
+import { LandService } from '../../services/LandService';
+import type { LandPlot } from '../../services/LandService';
+import type { RoomData } from '../../services/RoomService';
 
 interface PropertyInspectorProps {
   room: RoomData;
   onClose: () => void;
-  onEnter: (id: string) => void;
 }
 
-export function PropertyInspector({ room, onClose, onEnter }: PropertyInspectorProps) {
+export function PropertyInspector({ room, onClose }: PropertyInspectorProps) {
   const [plot, setPlot] = useState<LandPlot | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    LandService.getPlots().then(plots => {
-      const match = plots.find(p => p.landId === room.id);
-      if (match) setPlot(match);
-    });
+    let active = true;
+    setLoading(true);
+    LandService.getPlots()
+      .then((plots) => {
+        if (active) setPlot(plots.find((candidate) => candidate.landId === room.id) ?? null);
+      })
+      .catch(() => {
+        if (active) setPlot(null);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [room.id]);
+
   return (
-    <div className="absolute inset-0 bg-zinc-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm p-6 relative">
+    <div
+      aria-labelledby="room-details-title"
+      aria-modal="true"
+      className="absolute inset-0 flex items-center justify-center bg-zinc-950/80 p-4 backdrop-blur-sm"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose();
+      }}
+      onMouseDown={onClose}
+      role="dialog"
+      style={{ zIndex: 60 }}
+    >
+      <div className="relative w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900 p-6" onMouseDown={(event) => event.stopPropagation()}>
         <button
+          autoFocus
+          type="button"
+          aria-label="Close room details"
           onClick={onClose}
-          className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors"
+          className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full text-zinc-500 transition-colors hover:bg-white/5 hover:text-white"
         >
-          <X size={20} />
+          <X aria-hidden="true" size={20} />
         </button>
 
-        <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2 uppercase">
-          <Building size={20} className="text-emerald-500" />
-          PLOT #{room.id.substring(0,6).toUpperCase()}
+        <p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-300">World directory</p>
+        <h2 id="room-details-title" className="mb-5 mt-1 flex items-center gap-2 text-xl font-bold text-white">
+          <Building aria-hidden="true" size={20} className="text-emerald-400" />
+          Room details
         </h2>
 
-        <div className="space-y-2 mb-6 text-sm">
+        <dl className="mb-6 space-y-2 text-sm">
           <div className="flex justify-between border-b border-zinc-800 pb-2">
-            <span className="text-zinc-500">Name</span>
-            <span className="text-white font-medium">{room.name}</span>
+            <dt className="text-zinc-500">Name</dt>
+            <dd className="font-medium text-white">{room.name}</dd>
           </div>
           <div className="flex justify-between border-b border-zinc-800 pb-2">
-            <span className="text-zinc-500">Type</span>
-            <span className="text-white font-medium capitalize">{room.type}</span>
+            <dt className="text-zinc-500">Type</dt>
+            <dd className="font-medium capitalize text-white">{room.type}</dd>
           </div>
           <div className="flex justify-between border-b border-zinc-800 pb-2">
-            <span className="text-zinc-500">Owner</span>
-            <span className="text-blue-400 font-medium">{room.owner_id ? `@User_${room.owner_id.substring(0,4)}` : 'Public Asset'}</span>
+            <dt className="text-zinc-500">Steward</dt>
+            <dd className="font-medium text-blue-300">{room.owner_id ? 'Registered owner' : 'Community space'}</dd>
           </div>
           <div className="flex justify-between border-b border-zinc-800 pb-2">
-            <span className="text-zinc-500">Location</span>
-            <span className="text-white font-medium">{plot ? plot.location : 'Unknown District'}</span>
+            <dt className="text-zinc-500">Location</dt>
+            <dd className="max-w-[65%] text-right font-medium text-white">{loading ? 'Loading…' : plot?.location ?? 'Not published'}</dd>
           </div>
           <div className="flex justify-between pb-2">
-            <span className="text-zinc-500">Status</span>
-            <span className="text-emerald-400 font-medium">{plot ? plot.status : 'Active'}</span>
+            <dt className="text-zinc-500">Status</dt>
+            <dd className="font-medium text-emerald-400">{loading ? 'Loading…' : plot?.status ?? (room.is_public ? 'Public demo room' : 'Private room')}</dd>
           </div>
-        </div>
+        </dl>
 
         <button
-          onClick={() => onEnter(room.id)}
-          className="w-full bg-white text-black py-3 rounded-xl font-medium hover:bg-zinc-200 transition-colors"
+          type="button"
+          onClick={onClose}
+          className="w-full rounded-xl bg-white py-3 font-semibold text-black hover:bg-zinc-200"
         >
-          Enter Property
+          Back to room
         </button>
       </div>
     </div>
