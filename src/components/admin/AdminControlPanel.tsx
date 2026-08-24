@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Box, Building2, Clipboard, MapPinned, Plus, RotateCcw, Save, Trash2, X } from 'lucide-react';
 import {
   addCatalogObject,
@@ -21,12 +21,13 @@ interface Props {
   selectedObjectId: string | null;
   onRoomChange: (room: typeof centralPlazaRoom) => void;
   onSelectedObjectIdChange: (objectId: string | null) => void;
+  onDirtyChange: (dirty: boolean) => void;
 }
 
 const fieldClass = 'w-full rounded-lg border border-white/10 bg-black/25 px-2.5 py-2 text-xs text-white outline-none focus:border-cyan-300/60';
 const buttonClass = 'rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10';
 
-export function AdminControlPanel({ onClose, onEnterRoom, room, selectedObjectId, onRoomChange, onSelectedObjectIdChange }: Props) {
+export function AdminControlPanel({ onClose, onEnterRoom, room, selectedObjectId, onRoomChange, onSelectedObjectIdChange, onDirtyChange }: Props) {
   const [tab, setTab] = useState<Tab>('objects');
   const [maps, setMaps] = useState<RoomData[]>(() => RoomService.getAdminRooms());
   const [catalogCategory, setCatalogCategory] = useState<string>('all');
@@ -34,6 +35,10 @@ export function AdminControlPanel({ onClose, onEnterRoom, room, selectedObjectId
   const [savedRoomJson, setSavedRoomJson] = useState(() => exportEditableRoom(room));
   const [message, setMessage] = useState('Local admin draft. Backend publishing comes later.');
   const hasUnsavedChanges = exportEditableRoom(room) !== savedRoomJson;
+
+  useEffect(() => {
+    onDirtyChange(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onDirtyChange]);
 
   const selectedObject = room.objects.find((object) => object.id === selectedObjectId) ?? null;
   const selectedCatalog = selectedObject?.catalogId && selectedObject.catalogId in furnitureCatalog

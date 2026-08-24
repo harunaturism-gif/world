@@ -34,6 +34,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminRoom, setAdminRoom] = useState<RoomDefinition | null>(null);
   const [selectedAdminObjectId, setSelectedAdminObjectId] = useState<string | null>(null);
+  const [adminDirty, setAdminDirty] = useState(false);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [playerSpeech, setPlayerSpeech] = useState<PlayerSpeech | null>(null);
   const adminEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_ADMIN_PANEL === 'true';
@@ -42,14 +43,18 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
     const draft = loadEditableRoom(centralPlazaRoom);
     setAdminRoom(draft);
     setSelectedAdminObjectId(draft.objects[0]?.id ?? null);
+    setAdminDirty(false);
     setShowAdmin(true);
   }, []);
 
   const closeAdmin = useCallback(() => {
+    if (adminDirty && !window.confirm('Discard unsaved Plaza changes?')) return false;
     setShowAdmin(false);
     setAdminRoom(null);
     setSelectedAdminObjectId(null);
-  }, []);
+    setAdminDirty(false);
+    return true;
+  }, [adminDirty]);
 
   const moveAdminObject = useCallback((objectId: string, position: { x: number; y: number; z?: number }) => {
     setAdminRoom((current) => current ? updateCatalogObject(current, objectId, { position }) : current);
@@ -169,9 +174,9 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
           selectedObjectId={selectedAdminObjectId}
           onRoomChange={setAdminRoom}
           onSelectedObjectIdChange={setSelectedAdminObjectId}
+          onDirtyChange={setAdminDirty}
           onEnterRoom={(targetRoomId) => {
-            closeAdmin();
-            onEnterRoom(targetRoomId);
+            if (closeAdmin()) onEnterRoom(targetRoomId);
           }}
         />
       )}

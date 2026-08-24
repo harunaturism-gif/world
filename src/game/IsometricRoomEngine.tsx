@@ -66,14 +66,22 @@ interface AnimatedObject {
 
 interface Footstep { graphic: PIXI.Graphics; life: number }
 interface AmbientParticle { graphic: PIXI.Graphics; baseY: number; phase: number }
-interface SceneRuntime { say: (text: string) => void; execute: (selection: RoomSelection) => void; zoomBy: (amount: number) => void; recenter: () => void }
+interface SceneRuntime {
+  say: (text: string) => void;
+  execute: (selection: RoomSelection) => void;
+  zoomBy: (amount: number) => void;
+  recenter: () => void;
+  selectEditorObject: (objectId: string | null) => void;
+}
 
 const snapToTile = (point: IsoPoint): IsoPoint => ({ x: Math.round(point.x * 2) / 2, y: Math.round(point.y * 2) / 2 });
 
 export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfile, onPresenceUpdate, playerSpeech, editor }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const runtime = useRef<SceneRuntime | null>(null);
+  const editorRef = useRef(editor);
   const [selection, setSelection] = useState<RoomSelection | null>(null);
+  editorRef.current = editor;
 
   const runAction = () => {
     if (!selection) return;
@@ -87,6 +95,10 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
   useEffect(() => {
     if (playerSpeech?.text) runtime.current?.say(playerSpeech.text);
   }, [playerSpeech]);
+
+  useEffect(() => {
+    runtime.current?.selectEditorObject(editor?.enabled ? editor.selectedObjectId : null);
+  }, [editor?.enabled, editor?.selectedObjectId]);
 
   useEffect(() => {
     const hostElement = host.current;
@@ -211,9 +223,9 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
 
       const insideFloor = (point: IsoPoint) => Boolean(geometry.cellAt(point));
       const blocked = (point: IsoPoint) => geometry.isBlocked(point, collisionObjects);
-      const blockedForEditor = (point: IsoPoint) => geometry.isBlocked(
+      const blockedForEditor = (point: IsoPoint, selectedObjectId: string) => geometry.isBlocked(
         point,
-        collisionObjects.filter((object) => object.id !== editor?.selectedObjectId),
+        collisionObjects.filter((object) => object.id !== selectedObjectId),
       );
       const releaseSeat = (actor: Actor) => {
         if (!actor.seatId) return;
@@ -282,7 +294,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           node.addChild(contentNode);
         }
 
-        if (editor?.enabled && editableObjectIds.has(definition.id)) {
+        if (editorRef.current?.enabled && editableObjectIds.has(definition.id)) {
           sprite.eventMode = 'static';
           sprite.cursor = 'pointer';
           sprite.on('pointerover', () => { node.scale.set(1.035); });
@@ -291,10 +303,10 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
             event.stopPropagation();
             placeSelectionRing(definition.position);
             setSelection(null);
-            editor.onSelectObject(definition.id);
+            editorRef.current?.onSelectObject(definition.id);
             onInteract(`${definition.id} selected. Click a free tile to move it.`);
           });
-          if (editor.selectedObjectId === definition.id) placeSelectionRing(definition.position);
+          if (editorRef.current?.selectedObjectId === definition.id) placeSelectionRing(definition.position);
         } else if (definition.interaction) {
           const badge = new PIXI.Graphics();
           badge.beginFill(0x172238, 0.9);
@@ -598,7 +610,14 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
           return;
         }
         if (Math.hypot(player.user.iso.x - target.x, player.user.iso.y - target.y) < 0.6) completeInteraction();
-      }, zoomBy: (amount) => camera.zoomBy(amount), recenter: () => camera.recenter() };
+      }, zoomBy: (amount) => camera.zoomBy(amount), recenter: () => camera.recenter(), selectEditorObject: (objectId) => {
+        const definition = room.objects.find((object) => object.id === objectId);
+        if (!definition) {
+          selectionRing.visible = false;
+          return;
+        }
+        placeSelectionRing(definition.position);
+      } };
 
       scene.eventMode = 'static';
       const floorBounds = geometry.projectedFloorBounds();
@@ -660,10 +679,11 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       scene.on('pointertap', (event) => {
         if (dragged) { dragged = false; return; }
         const target = snapToTile(screenToIso(event.getLocalPosition(scene)));
-        if (editor?.enabled && editor.selectedObjectId) {
-          if (insideFloor(target) && !blockedForEditor(target)) {
-            editor.onMoveObject(editor.selectedObjectId, target);
-            onInteract(`${editor.selectedObjectId} moved to ${target.x}, ${target.y}. Save to keep the change.`);
+        const currentEditor = editorRef.current;
+        if (currentEditor?.enabled && currentEditor.selectedObjectId) {
+          if (insideFloor(target) && !blockedForEditor(target, currentEditor.selectedObjectId)) {
+            currentEditor.onMoveObject(currentEditor.selectedObjectId, target);
+            onInteract(`${currentEditor.selectedObjectId} moved to ${target.x}, ${target.y}. Save to keep the change.`);
           } else {
             onInteract('That tile cannot hold the selected object. Choose a free floor tile.');
           }
@@ -789,7 +809,7 @@ export function IsometricRoomEngine({ room, onInteract, onEnterRoom, onOpenProfi
       hostElement.replaceChildren();
       app.destroy(true, { children: true });
     };
-  }, [editor, onEnterRoom, onInteract, onOpenProfile, onPresenceUpdate, room]);
+  }, [onEnterRoom, onInteract, onOpenProfile, onPresenceUpdate, room]);
 
   return (
     <div className="relative h-full w-full">
