@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Compass, User, Map as MapIcon } from 'lucide-react';
-import { WorldMap } from './components/world/WorldMap';
-import { Room } from './components/world/Room';
-import { SocialFeed } from './components/social/SocialFeed';
-import { Profile } from './components/social/Profile';
-import { Discovery } from './components/social/Discovery';
-import { SupportHumanWorld } from './components/meta/SupportHumanWorld';
-import { GlobalSearch } from './components/social/GlobalSearch';
-import { Notifications } from './components/social/Notifications';
-import { AvatarCustomizer } from './components/social/AvatarCustomizer';
-import { Search, Bell } from 'lucide-react';
-import { Info } from 'lucide-react';
+import { Bell, Compass, Info, Loader2, Map as MapIcon, Search, User } from 'lucide-react';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
-import { AuthOverlay } from './components/auth/AuthOverlay';
+
+const AuthOverlay = React.lazy(() => import('./components/auth/AuthOverlay').then((module) => ({ default: module.AuthOverlay })));
+const WorldMap = React.lazy(() => import('./components/world/WorldMap').then((module) => ({ default: module.WorldMap })));
+const Room = React.lazy(() => import('./components/world/Room').then((module) => ({ default: module.Room })));
+const SocialFeed = React.lazy(() => import('./components/social/SocialFeed').then((module) => ({ default: module.SocialFeed })));
+const Profile = React.lazy(() => import('./components/social/Profile').then((module) => ({ default: module.Profile })));
+const Discovery = React.lazy(() => import('./components/social/Discovery').then((module) => ({ default: module.Discovery })));
+const SupportHumanWorld = React.lazy(() => import('./components/meta/SupportHumanWorld').then((module) => ({ default: module.SupportHumanWorld })));
+const GlobalSearch = React.lazy(() => import('./components/social/GlobalSearch').then((module) => ({ default: module.GlobalSearch })));
+const Notifications = React.lazy(() => import('./components/social/Notifications').then((module) => ({ default: module.Notifications })));
+const AvatarCustomizer = React.lazy(() => import('./components/social/AvatarCustomizer').then((module) => ({ default: module.AvatarCustomizer })));
 
 type ViewState = 'MAP' | 'ROOM' | 'FEED' | 'PROFILE' | 'DISCOVERY' | 'SUPPORT';
 
@@ -20,6 +19,17 @@ export type CurrentUser = {
   id: string;
   username: string;
 } | null;
+
+function LoadingSurface({ label, fullscreen = false }: { label: string; fullscreen?: boolean }) {
+  return (
+    <div className={`${fullscreen ? 'fixed' : 'absolute'} inset-0 z-50 grid place-items-center bg-[#10142c] text-white`} role="status" aria-live="polite">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <Loader2 className="animate-spin text-cyan-300" size={30}/>
+        <p className="text-xs font-black uppercase tracking-[.2em] text-cyan-100/75">{label}</p>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [currentView, setCurrentView] = useState<ViewState>('MAP');
@@ -58,7 +68,13 @@ function App() {
   };
 
   if (!currentUser) {
-    return <AuthOverlay onSuccess={handleEnterWorld} />;
+    return (
+      <ErrorBoundary>
+        <React.Suspense fallback={<LoadingSurface label="Opening Human World" fullscreen/>}>
+          <AuthOverlay onSuccess={handleEnterWorld} />
+        </React.Suspense>
+      </ErrorBoundary>
+    );
   }
 
   return (
@@ -66,25 +82,29 @@ function App() {
       <div className="fixed inset-0 bg-zinc-950 flex flex-col">
       {/* Main Content Area */}
       <main className="flex-1 relative overflow-hidden">
-        {currentView === 'MAP' && <WorldMap onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
-        {currentView === 'ROOM' && currentRoomId && (
-          <Room roomId={currentRoomId} onLeave={handleLeaveRoom} onEnterRoom={handleEnterRoom} onOpenProfile={handleOpenProfile} />
-        )}
-        {currentView === 'FEED' && <SocialFeed onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
-        {currentView === 'DISCOVERY' && <Discovery onEnterRoom={handleEnterRoom} />}
-        {currentView === 'SUPPORT' && <SupportHumanWorld />}
-        {currentView === 'PROFILE' && <Profile username={currentUser.username} currentUserId={currentUser.id} />}
+        <React.Suspense fallback={<LoadingSurface label="Loading this space"/>}>
+          {currentView === 'MAP' && <WorldMap onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
+          {currentView === 'ROOM' && currentRoomId && (
+            <Room roomId={currentRoomId} onLeave={handleLeaveRoom} onEnterRoom={handleEnterRoom} onOpenProfile={handleOpenProfile} />
+          )}
+          {currentView === 'FEED' && <SocialFeed onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
+          {currentView === 'DISCOVERY' && <Discovery onEnterRoom={handleEnterRoom} />}
+          {currentView === 'SUPPORT' && <SupportHumanWorld />}
+          {currentView === 'PROFILE' && <Profile username={currentUser.username} currentUserId={currentUser.id} />}
+        </React.Suspense>
 
         {/* Modals */}
-        {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} onSelect={(t, id) => { setShowSearch(false); if (t==='room') handleEnterRoom(id); else if (t==='human') handleOpenProfile(id); }} />}
-        {showNotifs && <Notifications onClose={() => setShowNotifs(false)} />}
+        <React.Suspense fallback={null}>
+          {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} onSelect={(t, id) => { setShowSearch(false); if (t==='room') handleEnterRoom(id); else if (t==='human') handleOpenProfile(id); }} />}
+          {showNotifs && <Notifications onClose={() => setShowNotifs(false)} />}
 
-        {showAvatarCustomizer && currentUser && <AvatarCustomizer userId={currentUser.id} onClose={() => setShowAvatarCustomizer(false)} onSave={() => setShowAvatarCustomizer(false)} />}
+          {showAvatarCustomizer && currentUser && <AvatarCustomizer userId={currentUser.id} onClose={() => setShowAvatarCustomizer(false)} onSave={() => setShowAvatarCustomizer(false)} />}
 
-        {/* Dynamic Profile Overlay */}
-        {selectedProfile && (
-          <Profile username={selectedProfile} onClose={() => setSelectedProfile(null)} currentUserId={currentUser.id} />
-        )}
+          {/* Dynamic Profile Overlay */}
+          {selectedProfile && (
+            <Profile username={selectedProfile} onClose={() => setSelectedProfile(null)} currentUserId={currentUser.id} />
+          )}
+        </React.Suspense>
       </main>
 
       {/* Mobile-Friendly Bottom Navigation */}
