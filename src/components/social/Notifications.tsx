@@ -16,7 +16,7 @@ export function Notifications({ onClose }: { onClose: () => void }) {
           <Bell size={20} className="text-blue-500" />
           Notifications
         </h2>
-        <button onClick={onClose} className="p-2 text-zinc-400 hover:text-white">
+        <button type="button" onClick={onClose} aria-label="Close notifications" className="p-2 text-zinc-400 hover:text-white">
           <X size={24} />
         </button>
       </div>

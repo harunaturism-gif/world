@@ -41,7 +41,7 @@ export function GlobalSearch({ onClose, onSelect }: { onClose: () => void, onSel
             className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:border-zinc-700"
           />
         </div>
-        <button onClick={onClose} className="p-2 text-zinc-400 hover:text-white">
+        <button type="button" onClick={onClose} aria-label="Close search" className="p-2 text-zinc-400 hover:text-white">
           <X size={24} />
         </button>
       </div>
