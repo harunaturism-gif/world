@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Compass, Info, Loader2, Map as MapIcon, Menu, MessagesSquare, Search, User, X } from 'lucide-react';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
+import type { SearchResultType } from './components/social/GlobalSearch';
 
 const AuthOverlay = React.lazy(() => import('./components/auth/AuthOverlay').then((module) => ({ default: module.AuthOverlay })));
 const WorldMap = React.lazy(() => import('./components/world/WorldMap').then((module) => ({ default: module.WorldMap })));
@@ -88,6 +89,15 @@ function App() {
     setCurrentView('SUPPORT');
   };
 
+  const handleSearchSelect = (type: SearchResultType, id: string) => {
+    setShowSearch(false);
+    if (type === 'human') {
+      handleOpenProfile(id);
+      return;
+    }
+    handleEnterRoom(id);
+  };
+
   if (!currentUser) {
     return (
       <ErrorBoundary>
@@ -116,7 +126,7 @@ function App() {
 
         {/* Modals */}
         <React.Suspense fallback={null}>
-          {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} onSelect={(t, id) => { setShowSearch(false); if (t==='room') handleEnterRoom(id); else if (t==='human') handleOpenProfile(id); }} />}
+          {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} onSelect={handleSearchSelect} />}
           {showNotifs && <Notifications onClose={() => setShowNotifs(false)} />}
 
           {showAvatarCustomizer && currentUser && <AvatarCustomizer userId={currentUser.id} onClose={() => setShowAvatarCustomizer(false)} onSave={() => setShowAvatarCustomizer(false)} />}
@@ -269,7 +279,7 @@ function MoreMenu({ onClose, onSearch, onNotifications, onProfile, onSupport }: 
   }, [onClose]);
 
   const actions = [
-    { label: 'Search world', description: 'Find humans and spaces', icon: <Search size={21}/>, onClick: onSearch },
+    { label: 'Search world', description: 'Find spaces and events', icon: <Search size={21}/>, onClick: onSearch },
     { label: 'Notifications', description: 'See recent activity', icon: <Bell size={21}/>, onClick: onNotifications },
     { label: 'Your profile', description: 'View your identity', icon: <User size={21}/>, onClick: onProfile },
     { label: 'About & support', description: 'Learn about Human World', icon: <Info size={21}/>, onClick: onSupport },

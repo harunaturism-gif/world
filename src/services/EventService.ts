@@ -6,7 +6,7 @@ export interface EventData {
 }
 
 const mockEvents: EventData[] = [
-  { eventId: 'e1', name: 'Digital Art Opening', roomId: 'gallery-01', startsAt: 'Tomorrow 8PM' }
+  { eventId: 'e1', name: 'Digital Art Opening', roomId: 'human-gallery', startsAt: 'Tomorrow 8PM' }
 ];
 
 export const EventService = {
