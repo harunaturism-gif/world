@@ -1,7 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import express from 'express';
 import http from 'http';
-import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import {
@@ -21,19 +20,69 @@ import {
   signApplicationSession,
   verifyApplicationSession,
 } from './appSession.js';
+import {
+  AuthenticatedMultiplayerState,
+  MAX_WEBSOCKET_PAYLOAD_BYTES,
+  attachWebSocketAuthentication,
+  authenticateWebSocketUpgrade,
+  getWebSocketAuthentication,
+  parseClientWebSocketMessage,
+  type PublicPlayerState,
+} from './webSocketSession.js';
 
 dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
 
 const app = express();
 const server = http.createServer(app);
-// SECURITY PHASE 2 LIMITATION: multiplayer WebSockets remain unauthenticated.
-// Closed beta remains blocked until connections and room identity use this app session.
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({
+  maxPayload: MAX_WEBSOCKET_PAYLOAD_BYTES,
+  noServer: true,
+  perMessageDeflate: false,
+});
 
 const appSessionConfig = createAppSessionConfig(process.env);
 if (!appSessionConfig && process.env.NODE_ENV !== 'development') {
   throw new Error('Invalid application-session server configuration');
 }
+
+function rejectWebSocketUpgrade(socket: Parameters<typeof wss.handleUpgrade>[1], statusCode: number) {
+  const statusText = statusCode === 400
+    ? 'Bad Request'
+    : statusCode === 401
+      ? 'Unauthorized'
+      : statusCode === 403
+        ? 'Forbidden'
+        : 'Service Unavailable';
+
+  if (socket.writable) {
+    socket.write(`HTTP/1.1 ${statusCode} ${statusText}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+  }
+  socket.destroy();
+}
+
+server.on('upgrade', (request, socket, head) => {
+  const result = authenticateWebSocketUpgrade({
+    config: appSessionConfig,
+    cookieHeader: request.headers.cookie,
+    originHeader: request.headers.origin,
+    protocolHeader: request.headers['sec-websocket-protocol'],
+    requestTarget: request.url,
+  });
+
+  if (!result.accepted) {
+    rejectWebSocketUpgrade(socket, result.statusCode);
+    return;
+  }
+
+  try {
+    wss.handleUpgrade(request, socket, head, (webSocket) => {
+      const authenticatedSocket = attachWebSocketAuthentication(webSocket, result.authentication);
+      wss.emit('connection', authenticatedSocket, request);
+    });
+  } catch {
+    socket.destroy();
+  }
+});
 
 app.use((req, res, next) => {
   const isAuthRequest = req.path.startsWith('/api/auth');
@@ -187,122 +236,157 @@ app.post('/api/auth/logout', (_req, res) => {
   return res.json({ success: true });
 });
 
-const rooms = new Map<string, Map<string, { x: number, y: number, name: string }>>();
+type ServerWebSocketMessage =
+  | { type: 'init'; id: string; state: PublicPlayerState[] }
+  | { type: 'join'; id: string; name: string; x: number; y: number }
+  | { type: 'move'; id: string; x: number; y: number }
+  | { type: 'chat'; id: string; name: string; text: string }
+  | { type: 'leave'; id: string };
+
+const multiplayerState = new AuthenticatedMultiplayerState<WebSocket>();
+
+function sendWebSocketMessage(socket: WebSocket, message: ServerWebSocketMessage) {
+  if (socket.readyState !== WebSocket.OPEN) return;
+  if (socket.bufferedAmount > MAX_WEBSOCKET_PAYLOAD_BYTES * 4) {
+    socket.close(1013, 'Connection overloaded');
+    return;
+  }
+
+  try {
+    socket.send(JSON.stringify(message));
+  } catch {
+    socket.close(1011, 'Send failed');
+  }
+}
+
+function broadcastToRoom(
+  roomId: string,
+  message: ServerWebSocketMessage,
+  excludeConnectionId: string | null = null,
+) {
+  for (const connection of multiplayerState.getConnectionsInRoom(roomId)) {
+    if (connection.connectionId !== excludeConnectionId) {
+      sendWebSocketMessage(connection.socket, message);
+    }
+  }
+}
 
 wss.on('connection', (ws: WebSocket) => {
-  let currentRoom: string | null = null;
-  const playerId = crypto.randomUUID();
-  let playerName = `Human_${playerId.substring(0, 4)}`;
+  const authentication = getWebSocketAuthentication(ws);
+  if (!authentication) {
+    ws.close(1008, 'Authentication required');
+    return;
+  }
 
-  ws.on('message', (message: string) => {
-    try {
-      const data = JSON.parse(message);
+  const registration = multiplayerState.register(ws, authentication);
+  const { connection, replaced, departedRoomId } = registration;
 
-      if (data.type === 'join') {
-        const { roomId, name } = data;
-        currentRoom = roomId;
-        if (name) playerName = name;
+  if (departedRoomId) {
+    broadcastToRoom(departedRoomId, {
+      type: 'leave',
+      id: authentication.user.id,
+    });
+  }
+  if (replaced && (replaced.socket.readyState === WebSocket.OPEN || replaced.socket.readyState === WebSocket.CONNECTING)) {
+    replaced.socket.close(4001, 'Session replaced');
+  }
 
-        if (!rooms.has(roomId)) {
-          rooms.set(roomId, new Map());
-        }
-
-        // Spawn slightly randomized position
-        const spawnX = (Math.random() - 0.5) * 200;
-        const spawnY = (Math.random() - 0.5) * 200;
-
-        rooms.get(roomId)!.set(playerId, { x: spawnX, y: spawnY, name: playerName });
-
-        // Send current state to new player
-        const roomState = Array.from(rooms.get(roomId)!.entries()).map(([id, state]) => ({
-          id, ...state
-        }));
-
-        ws.send(JSON.stringify({
-          type: 'init',
-          id: playerId,
-          state: roomState
-        }));
-
-        // Broadcast join to others
-        broadcast(roomId, {
-          type: 'join',
-          id: playerId,
-          x: spawnX,
-          y: spawnY,
-          name: playerName
-        }, playerId);
-      }
-
-      if (data.type === 'move' && currentRoom) {
-        const room = rooms.get(currentRoom);
-        if (room && room.has(playerId)) {
-          const playerState = room.get(playerId)!;
-          playerState.x = data.x;
-          playerState.y = data.y;
-
-          broadcast(currentRoom, {
-            type: 'move',
-            id: playerId,
-            x: data.x,
-            y: data.y
-          }, playerId);
-        }
-      }
-
-      if (data.type === 'chat' && currentRoom) {
-        broadcast(currentRoom, {
-          type: 'chat',
-          id: playerId,
-          name: playerName,
-          text: data.text
-        }); // Broadcast to everyone including sender for echo confirmation
-      }
-
-    } catch (e) {
-      console.error('Invalid message format', e);
+  ws.on('message', (rawMessage, isBinary) => {
+    if (!multiplayerState.isCurrent(connection)) {
+      ws.close(4001, 'Session replaced');
+      return;
     }
+    if (isBinary) {
+      ws.close(1003, 'Text messages required');
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawMessage.toString());
+    } catch {
+      ws.close(1007, 'Invalid message');
+      return;
+    }
+
+    const message = parseClientWebSocketMessage(parsed);
+    if (!message) {
+      ws.close(1008, 'Invalid message');
+      return;
+    }
+
+    if (message.type === 'join') {
+      const spawnX = (Math.random() - 0.5) * 200;
+      const spawnY = (Math.random() - 0.5) * 200;
+      const joined = multiplayerState.join(connection, message.roomId, spawnX, spawnY);
+      if (!joined) {
+        ws.close(1008, 'Invalid room state');
+        return;
+      }
+
+      if (joined.departedRoomId) {
+        broadcastToRoom(joined.departedRoomId, {
+          type: 'leave',
+          id: authentication.user.id,
+        });
+      }
+
+      sendWebSocketMessage(ws, {
+        type: 'init',
+        id: authentication.user.id,
+        state: joined.roomState,
+      });
+      broadcastToRoom(message.roomId, {
+        type: 'join',
+        id: joined.presence.id,
+        name: joined.presence.name,
+        x: joined.presence.x,
+        y: joined.presence.y,
+      }, connection.connectionId);
+      return;
+    }
+
+    if (message.type === 'move') {
+      const moved = multiplayerState.move(connection, message.x, message.y);
+      if (!moved || !connection.currentRoom) {
+        ws.close(1008, 'Invalid movement state');
+        return;
+      }
+
+      broadcastToRoom(connection.currentRoom, {
+        type: 'move',
+        id: moved.id,
+        x: moved.x,
+        y: moved.y,
+      }, connection.connectionId);
+      return;
+    }
+
+    if (!connection.currentRoom) {
+      ws.close(1008, 'Invalid chat state');
+      return;
+    }
+    broadcastToRoom(connection.currentRoom, {
+      type: 'chat',
+      id: authentication.user.id,
+      name: authentication.user.username,
+      text: message.text,
+    });
   });
 
   ws.on('close', () => {
-    if (currentRoom && rooms.has(currentRoom)) {
-      rooms.get(currentRoom)!.delete(playerId);
-      broadcast(currentRoom, {
+    const disconnected = multiplayerState.disconnect(connection);
+    if (disconnected.departedRoomId) {
+      broadcastToRoom(disconnected.departedRoomId, {
         type: 'leave',
-        id: playerId
+        id: authentication.user.id,
       });
-      if (rooms.get(currentRoom)!.size === 0) {
-        rooms.delete(currentRoom);
-      }
     }
   });
 
-  function broadcast(roomId: string, message: any, excludeId: string | null = null) {
-    const messageStr = JSON.stringify(message);
-    wss.clients.forEach((client) => {
-      // We don't have a reliable mapping of client -> playerId in this simple setup without attaching it to the client object
-      // So we attach it when they join.
-      const clientPlayerId = (client as any).playerId;
-      if (client.readyState === WebSocket.OPEN && clientPlayerId !== excludeId && (client as any).roomId === roomId) {
-        client.send(messageStr);
-      }
-    });
-  }
-
-  // Attach metadata to client for broadcasting filtering
-  (ws as any).playerId = playerId;
-  // Monkeypatch the join handler to set roomId on the socket
-  const originalOnMessage = ws.listeners('message')[0] as Function;
-  ws.removeAllListeners('message');
-  ws.on('message', (msg: string) => {
-    try {
-      const data = JSON.parse(msg);
-      if (data.type === 'join') {
-        (ws as any).roomId = data.roomId;
-      }
-    } catch(e) {}
-    originalOnMessage(msg);
-  });
+  // Prevent transport errors from becoming uncaught process errors. The close
+  // handler performs identity-safe cleanup when this socket actually closes.
+  ws.on('error', () => {});
 });
 
 const PORT = process.env.PORT || 3001;
