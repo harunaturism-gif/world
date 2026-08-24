@@ -1,172 +1,276 @@
-import { Heart, MessageCircle, Share2, MapPin } from 'lucide-react';
+import { Heart, Loader2, MapPin, MessageCircle, RefreshCw, Send, Share2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { FeedService, PostData } from '../../services/FeedService';
-import { CurrentUser } from '../../App';
+import type { CurrentUser } from '../../App';
+import { FeedService } from '../../services/FeedService';
+import type { PostData } from '../../services/FeedService';
 
 interface SocialFeedProps {
   onEnterRoom?: (roomId: string) => void;
   currentUser?: CurrentUser;
 }
 
-export function SocialFeed({ onEnterRoom, currentUser }: SocialFeedProps) {
-  const [likedPosts, setLikedPosts] = useState<Set<number>>(new Set());
+type FeedStatus = 'error' | 'loading' | 'ready';
+type ComposerNotice = { tone: 'error' | 'success'; text: string } | null;
 
-  const handleLike = async (id: number) => {
-    await FeedService.likePost(id);
-    // Refresh the feed to get updated data from the source of truth
-    loadFeed();
-    setLikedPosts(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+const MAX_POST_LENGTH = 280;
+const LIKED_POSTS_STORAGE_KEY = 'human-world:feed:liked-posts:v1';
+
+function readLikedPosts() {
+  if (typeof window === 'undefined') return new Set<number>();
+  try {
+    const value = JSON.parse(window.localStorage.getItem(LIKED_POSTS_STORAGE_KEY) ?? '[]');
+    if (!Array.isArray(value)) return new Set<number>();
+    return new Set(value.filter((postId): postId is number => Number.isInteger(postId) && postId >= 0));
+  } catch {
+    return new Set<number>();
+  }
+}
+
+function persistLikedPosts(postIds: Set<number>) {
+  try {
+    window.localStorage.setItem(LIKED_POSTS_STORAGE_KEY, JSON.stringify([...postIds]));
+  } catch {
+    // A blocked storage API should not prevent the in-memory interaction.
+  }
+}
+
+function formatRelativeTime(dateString: string) {
+  const timestamp = new Date(dateString).getTime();
+  if (!Number.isFinite(timestamp)) return 'Recently';
+
+  const diffMinutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${Math.floor(diffHours / 24)}d ago`;
+}
+
+function FeedSkeleton() {
+  return (
+    <div aria-label="Loading feed" className="divide-y divide-zinc-800" role="status">
+      {[0, 1, 2].map((item) => (
+        <div key={item} className="animate-pulse p-4">
+          <div className="mb-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-zinc-800" />
+            <div className="space-y-2">
+              <div className="h-3 w-24 rounded bg-zinc-800" />
+              <div className="h-2.5 w-14 rounded bg-zinc-900" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="h-3 w-full rounded bg-zinc-800" />
+            <div className="h-3 w-4/5 rounded bg-zinc-800" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FeedPost({ post, isLiked, isLikePending, onEnterRoom, onLike }: {
+  post: PostData;
+  isLiked: boolean;
+  isLikePending: boolean;
+  onEnterRoom?: (roomId: string) => void;
+  onLike: (post: PostData) => void;
+}) {
+  const roomId = post.room_id;
+
+  return (
+    <article className="border-b border-zinc-800 p-4 transition-colors hover:bg-zinc-900/50">
+      <header className="mb-2 flex items-center gap-2">
+        <div aria-hidden="true" className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold ${post.is_system ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-300'}`}>
+          {post.author_name.charAt(0).toUpperCase()}
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-white">{post.author_name}</p>
+          <p className="text-xs text-zinc-500">{post.is_system ? 'World guide' : 'Resident'} · {formatRelativeTime(post.created_at)}</p>
+        </div>
+      </header>
+
+      <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-zinc-300">{post.content}</p>
+
+      {roomId && post.room_name ? (
+        <button
+          type="button"
+          onClick={() => onEnterRoom?.(roomId)}
+          className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:border-blue-400/25 hover:text-blue-300"
+        >
+          <MapPin aria-hidden="true" size={14}/>
+          Visit {post.room_name}
+        </button>
+      ) : null}
+
+      <footer className="mt-4 flex items-center gap-5 text-zinc-500">
+        <button
+          type="button"
+          aria-label={`${isLiked ? 'Liked' : 'Like'} post by ${post.author_name}`}
+          aria-pressed={isLiked}
+          disabled={isLiked || isLikePending}
+          onClick={() => onLike(post)}
+          className={`flex min-h-9 items-center gap-1.5 rounded-lg px-2 transition-colors disabled:cursor-default ${isLiked ? 'text-rose-400' : 'hover:bg-rose-500/10 hover:text-rose-300'}`}
+        >
+          {isLikePending ? <Loader2 aria-hidden="true" className="animate-spin" size={16}/> : <Heart aria-hidden="true" className={isLiked ? 'fill-current' : ''} size={16}/>}
+          <span className="text-xs">{post.likes}</span>
+        </button>
+        <button type="button" disabled aria-label={`${post.comments} comments, coming soon`} className="flex min-h-9 cursor-not-allowed items-center gap-1.5 rounded-lg px-2 opacity-45">
+          <MessageCircle aria-hidden="true" size={16}/>
+          <span className="text-xs">{post.comments}</span>
+        </button>
+        <button type="button" disabled aria-label="Share post, coming soon" className="ml-auto grid h-9 w-9 cursor-not-allowed place-items-center rounded-lg opacity-45">
+          <Share2 aria-hidden="true" size={16}/>
+        </button>
+      </footer>
+    </article>
+  );
+}
+
+export function SocialFeed({ onEnterRoom, currentUser }: SocialFeedProps) {
   const [posts, setPosts] = useState<PostData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<FeedStatus>('loading');
+  const [reloadToken, setReloadToken] = useState(0);
+  const [likedPosts, setLikedPosts] = useState<Set<number>>(readLikedPosts);
+  const [likePending, setLikePending] = useState<Set<number>>(() => new Set());
   const [newPostContent, setNewPostContent] = useState('');
   const [isPosting, setIsPosting] = useState(false);
+  const [composerNotice, setComposerNotice] = useState<ComposerNotice>(null);
+  const trimmedPost = newPostContent.trim();
 
   useEffect(() => {
-    loadFeed();
-  }, []);
+    let active = true;
+    setStatus('loading');
 
-  async function loadFeed() {
-    setLoading(true);
-    const data = await FeedService.getFeed();
-    // Default fallback posts if DB is empty
-    if (data.length === 0) {
-       setPosts([
-          {
-            id: 1,
-            author_id: 'luna',
-            author_name: 'Luna',
-            created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-            content: 'Just finished decorating the demo cafe! Open for visitors now.',
-            room_id: 'lunas-cafe',
-            room_name: "Luna's Cafe",
-            likes: 124,
-            comments: 18,
-            is_system: false,
-          },
-          {
-            id: 2,
-            author_id: 'demo-guide',
-            author_name: 'Demo Guide',
-            created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-            content: 'Central Plaza is open. Meet the four demo residents by the fountain.',
-            room_id: 'central-plaza',
-            room_name: 'Central Plaza',
-            likes: 89,
-            comments: 5,
-            is_system: true,
-          }
-       ]);
-    } else {
-       setPosts(data);
-    }
-    setLoading(false);
-  }
+    FeedService.getFeed()
+      .then((data) => {
+        if (!active) return;
+        setPosts(data);
+        setStatus('ready');
+      })
+      .catch(() => {
+        if (!active) return;
+        setStatus('error');
+      });
 
-  const handleCreatePost = async () => {
-    if (!currentUser || !newPostContent.trim()) return;
-    setIsPosting(true);
-    const newPost = await FeedService.createPost(currentUser.id, currentUser.username, newPostContent);
-    if (newPost) {
-      setPosts(prev => [newPost, ...prev]);
-      setNewPostContent('');
+    return () => {
+      active = false;
+    };
+  }, [reloadToken]);
+
+  const handleLike = async (post: PostData) => {
+    if (likedPosts.has(post.id) || likePending.has(post.id)) return;
+
+    setLikePending((current) => new Set(current).add(post.id));
+    try {
+      const success = await FeedService.likePost(post.id);
+      if (!success) throw new Error('Like rejected');
+
+      setLikedPosts((current) => {
+        const next = new Set(current).add(post.id);
+        persistLikedPosts(next);
+        return next;
+      });
+      setPosts((current) => current.map((item) => item.id === post.id ? { ...item, likes: item.likes + 1 } : item));
+    } catch {
+      setComposerNotice({ tone: 'error', text: 'That reaction could not be saved. Please try again.' });
+    } finally {
+      setLikePending((current) => {
+        const next = new Set(current);
+        next.delete(post.id);
+        return next;
+      });
     }
-    setIsPosting(false);
   };
 
-  const getTimeAgo = (dateStr: string) => {
-    const diffMs = Date.now() - new Date(dateStr).getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${Math.floor(diffHours / 24)}d ago`;
+  const handleCreatePost = async () => {
+    if (!currentUser || !trimmedPost || isPosting) return;
+
+    setIsPosting(true);
+    setComposerNotice(null);
+    try {
+      const newPost = await FeedService.createPost(currentUser.id, currentUser.username, trimmedPost);
+      if (!newPost) throw new Error('Post rejected');
+
+      setPosts((current) => [newPost, ...current]);
+      setNewPostContent('');
+      setComposerNotice({ tone: 'success', text: 'Your update is live.' });
+    } catch {
+      setComposerNotice({ tone: 'error', text: 'Your update could not be posted. Please try again.' });
+    } finally {
+      setIsPosting(false);
+    }
   };
 
   return (
-    <div className="absolute inset-0 bg-zinc-950 overflow-y-auto pt-safe pb-16">
-      {/* Header */}
-      <div className="sticky top-0 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800 z-10 px-4 py-4">
-        <h1 className="text-xl font-bold text-white">Discovery Feed</h1>
-      </div>
+    <div className="absolute inset-0 overflow-y-auto bg-zinc-950 pb-16 pt-safe text-white">
+      <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/85 px-4 py-4 backdrop-blur-md">
+        <div className="mx-auto max-w-md">
+          <p className="text-[10px] font-bold uppercase tracking-[.18em] text-cyan-300/70">Human World</p>
+          <h1 className="text-xl font-bold">Discovery Feed</h1>
+        </div>
+      </header>
 
-      <div className="max-w-md mx-auto">
-
-        {currentUser && (
-          <div className="border-b border-zinc-800 p-4 bg-zinc-900/30">
+      <div className="mx-auto max-w-md">
+        {currentUser ? (
+          <section aria-labelledby="composer-title" className="border-b border-zinc-800 bg-zinc-900/30 p-4">
+            <h2 id="composer-title" className="mb-2 text-sm font-semibold text-zinc-200">Share an update</h2>
             <textarea
+              aria-label="Post content"
               value={newPostContent}
-              onChange={(e) => setNewPostContent(e.target.value)}
-              placeholder="What's happening in your part of the World?"
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:outline-none focus:border-zinc-700 resize-none"
+              maxLength={MAX_POST_LENGTH}
+              onChange={(event) => {
+                setNewPostContent(event.target.value);
+                setComposerNotice(null);
+              }}
+              placeholder="What’s happening in your part of the World?"
+              className="w-full resize-none rounded-xl border border-zinc-800 bg-zinc-900 p-3 text-sm text-white focus:border-cyan-400/35 focus:outline-none"
               rows={3}
             />
-            <div className="flex justify-end mt-2">
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span className={`text-xs ${newPostContent.length >= MAX_POST_LENGTH ? 'text-amber-300' : 'text-zinc-600'}`}>{newPostContent.length}/{MAX_POST_LENGTH}</span>
               <button
+                type="button"
                 onClick={handleCreatePost}
-                disabled={isPosting || !newPostContent.trim()}
-                className="bg-white text-black px-4 py-1.5 rounded-full text-sm font-medium disabled:opacity-50 hover:bg-zinc-200 transition-colors"
+                disabled={isPosting || !trimmedPost}
+                className="inline-flex min-h-9 items-center gap-2 rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-45"
               >
-                {isPosting ? 'Posting...' : 'Post Update'}
+                {isPosting ? <Loader2 aria-hidden="true" className="animate-spin" size={15}/> : <Send aria-hidden="true" size={15}/>}
+                {isPosting ? 'Posting…' : 'Post update'}
               </button>
             </div>
-          </div>
-        )}
-
-        {loading && posts.length === 0 ? (
-          <div className="p-8 text-center text-zinc-500">Loading feed...</div>
-        ) : (
-          posts.map(post => (
-            <div key={post.id} className="border-b border-zinc-800 p-4 hover:bg-zinc-900/50 transition-colors">
-              <div className="flex items-center gap-2 mb-2">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                  post.is_system ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-400'
-                }`}>
-                  {post.author_name[0].toUpperCase()}
-                </div>
-                <div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-white font-medium text-sm">{post.author_name}</span>
-                    {!post.is_system && <span className="text-blue-500 text-xs">✓</span>}
-                  </div>
-                  <div className="text-zinc-500 text-xs">{getTimeAgo(post.created_at)}</div>
-                </div>
-              </div>
-
-              <p className="text-zinc-300 text-sm mb-3">{post.content}</p>
-
-              {post.room_id && post.room_name && (
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => onEnterRoom?.(post.room_id as string)}
-                    className="flex items-center gap-1 text-zinc-500 hover:text-blue-400 text-xs font-medium transition-colors bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800"
-                  >
-                    <MapPin size={14} />
-                    Visit {post.room_name}
-                  </button>
-                </div>
-              )}
-
-              <div className="flex items-center gap-6 mt-4 text-zinc-500">
-                <button onClick={() => handleLike(post.id)} className={`flex items-center gap-1.5 transition-colors ${likedPosts.has(post.id) ? 'text-rose-400' : 'hover:text-rose-400'}`}>
-                  <Heart size={16} className={likedPosts.has(post.id) ? "fill-current" : ""} />
-                  <span className="text-xs">{post.likes + (likedPosts.has(post.id) ? 1 : 0)}</span>
-                </button>
-                <button className="flex items-center gap-1.5 hover:text-white transition-colors">
-                  <MessageCircle size={16} />
-                  <span className="text-xs">{post.comments}</span>
-                </button>
-                <button className="flex items-center gap-1.5 hover:text-white transition-colors ml-auto">
-                  <Share2 size={16} />
-                </button>
-              </div>
+            <div aria-live="polite" className="min-h-5 pt-2 text-xs">
+              {composerNotice ? <p className={composerNotice.tone === 'error' ? 'text-rose-300' : 'text-emerald-300'}>{composerNotice.text}</p> : null}
             </div>
-          ))
-        )}
+          </section>
+        ) : null}
+
+        {status === 'loading' && posts.length === 0 ? <FeedSkeleton /> : null}
+
+        {status === 'error' ? (
+          <div className="px-6 py-16 text-center">
+            <p className="font-semibold text-zinc-200">The feed could not load.</p>
+            <p className="mt-1 text-sm text-zinc-500">Check your connection and try again.</p>
+            <button type="button" onClick={() => setReloadToken((value) => value + 1)} className="mx-auto mt-5 inline-flex items-center gap-2 rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-900">
+              <RefreshCw aria-hidden="true" size={15}/>
+              Retry
+            </button>
+          </div>
+        ) : null}
+
+        {status === 'ready' && posts.length === 0 ? (
+          <div className="px-6 py-16 text-center text-sm text-zinc-500">No updates yet. Be the first human to post.</div>
+        ) : null}
+
+        {posts.map((post) => (
+          <FeedPost
+            key={post.id}
+            post={post}
+            isLiked={likedPosts.has(post.id)}
+            isLikePending={likePending.has(post.id)}
+            onEnterRoom={onEnterRoom}
+            onLike={handleLike}
+          />
+        ))}
       </div>
     </div>
   );

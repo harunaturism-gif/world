@@ -14,15 +14,43 @@ export interface PostData {
 }
 
 let mockIdCounter = 100;
-const mockPosts: PostData[] = [];
+const mockPosts: PostData[] = [
+  {
+    id: 1,
+    author_id: 'luna',
+    author_name: 'Luna',
+    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    content: 'Just finished decorating the demo cafe! Open for visitors now.',
+    room_id: 'lunas-cafe',
+    room_name: "Luna's Cafe",
+    likes: 124,
+    comments: 18,
+    is_system: false,
+  },
+  {
+    id: 2,
+    author_id: 'demo-guide',
+    author_name: 'Demo Guide',
+    created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+    content: 'Central Plaza is open. Meet the four demo residents by the fountain.',
+    room_id: 'central-plaza',
+    room_name: 'Central Plaza',
+    likes: 89,
+    comments: 5,
+    is_system: true,
+  },
+];
 
 function getLocalFeed() {
-  return [...mockPosts].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  return mockPosts
+    .map((post) => ({ ...post }))
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
 function likeLocalPost(postId: number) {
   const post = mockPosts.find((candidate) => candidate.id === postId);
-  if (post) post.likes += 1;
+  if (!post) return false;
+  post.likes += 1;
   return true;
 }
 
@@ -46,7 +74,7 @@ function createLocalPost(
     created_at: new Date().toISOString(),
   };
   mockPosts.push(post);
-  return post;
+  return { ...post };
 }
 
 export const FeedService = {
