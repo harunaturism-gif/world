@@ -1,24 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Bell, Compass, Info, Loader2, Map as MapIcon, Menu, MessagesSquare, Search, User, X } from 'lucide-react';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import type { SearchResultType } from './components/social/GlobalSearch';
+import { lazyWithRetry } from './lib/lazyWithRetry';
 
-const AuthOverlay = React.lazy(() => import('./components/auth/AuthOverlay').then((module) => ({ default: module.AuthOverlay })));
-const WorldMap = React.lazy(() => import('./components/world/WorldMap').then((module) => ({ default: module.WorldMap })));
+const AuthOverlay = lazyWithRetry('auth-overlay', () => import('./components/auth/AuthOverlay').then((module) => ({ default: module.AuthOverlay })));
+const WorldMap = lazyWithRetry('world-map', () => import('./components/world/WorldMap').then((module) => ({ default: module.WorldMap })));
 const loadRoomModule = () => import('./components/world/Room');
 const loadRoomEngineModule = () => import('./components/world/CentralPlazaEngine');
-const Room = React.lazy(() => loadRoomModule().then((module) => ({ default: module.Room })));
-const SocialFeed = React.lazy(() => import('./components/social/SocialFeed').then((module) => ({ default: module.SocialFeed })));
-const Profile = React.lazy(() => import('./components/social/Profile').then((module) => ({ default: module.Profile })));
-const Discovery = React.lazy(() => import('./components/social/Discovery').then((module) => ({ default: module.Discovery })));
-const SupportHumanWorld = React.lazy(() => import('./components/meta/SupportHumanWorld').then((module) => ({ default: module.SupportHumanWorld })));
-const GlobalSearch = React.lazy(() => import('./components/social/GlobalSearch').then((module) => ({ default: module.GlobalSearch })));
-const Notifications = React.lazy(() => import('./components/social/Notifications').then((module) => ({ default: module.Notifications })));
-const AvatarCustomizer = React.lazy(() => import('./components/social/AvatarCustomizer').then((module) => ({ default: module.AvatarCustomizer })));
+const Room = lazyWithRetry('room', () => loadRoomModule().then((module) => ({ default: module.Room })));
+const SocialFeed = lazyWithRetry('social-feed', () => import('./components/social/SocialFeed').then((module) => ({ default: module.SocialFeed })));
+const Profile = lazyWithRetry('profile', () => import('./components/social/Profile').then((module) => ({ default: module.Profile })));
+const Discovery = lazyWithRetry('discovery', () => import('./components/social/Discovery').then((module) => ({ default: module.Discovery })));
+const SupportHumanWorld = lazyWithRetry('support', () => import('./components/meta/SupportHumanWorld').then((module) => ({ default: module.SupportHumanWorld })));
+const GlobalSearch = lazyWithRetry('global-search', () => import('./components/social/GlobalSearch').then((module) => ({ default: module.GlobalSearch })));
+const Notifications = lazyWithRetry('notifications', () => import('./components/social/Notifications').then((module) => ({ default: module.Notifications })));
+const AvatarCustomizer = lazyWithRetry('avatar-customizer', () => import('./components/social/AvatarCustomizer').then((module) => ({ default: module.AvatarCustomizer })));
 
 function preloadRoomExperience() {
-  void loadRoomModule();
-  void loadRoomEngineModule();
+  void Promise.allSettled([loadRoomModule(), loadRoomEngineModule()]);
 }
 
 type ViewState = 'MAP' | 'ROOM' | 'FEED' | 'PROFILE' | 'DISCOVERY' | 'SUPPORT';
@@ -50,7 +50,21 @@ function App() {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const inRoom = currentView === 'ROOM';
 
+  const closeOverlays = useCallback(() => {
+    setSelectedProfile(null);
+    setShowSearch(false);
+    setShowNotifs(false);
+    setShowAvatarCustomizer(false);
+    setShowMoreMenu(false);
+  }, []);
+
+  const navigateTo = (view: ViewState) => {
+    closeOverlays();
+    setCurrentView(view);
+  };
+
   const handleEnterRoom = (roomId: string) => {
+    closeOverlays();
     preloadRoomExperience();
     setCurrentRoomId(roomId);
     setCurrentView('ROOM');
@@ -64,38 +78,46 @@ function App() {
   };
 
   const handleLeaveRoom = () => {
+    closeOverlays();
     setCurrentRoomId(null);
     setCurrentView('MAP');
   };
 
   useEffect(() => {
-    const handler = () => setShowAvatarCustomizer(true);
+    const handler = () => {
+      closeOverlays();
+      setShowAvatarCustomizer(true);
+    };
     window.addEventListener('open-avatar-customizer', handler);
     return () => window.removeEventListener('open-avatar-customizer', handler);
-  }, []);
+  }, [closeOverlays]);
 
   const handleOpenProfile = (username: string) => {
+    closeOverlays();
     setSelectedProfile(username);
   };
 
   const handleOpenSearch = () => {
-    setShowMoreMenu(false);
+    closeOverlays();
     setShowSearch(true);
   };
 
   const handleOpenNotifications = () => {
-    setShowMoreMenu(false);
+    closeOverlays();
     setShowNotifs(true);
   };
 
   const handleOpenOwnProfile = () => {
-    setShowMoreMenu(false);
-    setCurrentView('PROFILE');
+    navigateTo('PROFILE');
   };
 
   const handleOpenSupport = () => {
-    setShowMoreMenu(false);
-    setCurrentView('SUPPORT');
+    navigateTo('SUPPORT');
+  };
+
+  const handleOpenMore = () => {
+    closeOverlays();
+    setShowMoreMenu(true);
   };
 
   const handleSearchSelect = (type: SearchResultType, id: string) => {
@@ -107,44 +129,73 @@ function App() {
     handleEnterRoom(id);
   };
 
+  const recoverToWorld = () => {
+    setCurrentRoomId(null);
+    closeOverlays();
+    setCurrentView('MAP');
+  };
+
+  const overlayKey = showSearch
+    ? 'search'
+    : showNotifs
+      ? 'notifications'
+      : showAvatarCustomizer
+        ? 'avatar-customizer'
+        : selectedProfile
+          ? `profile:${selectedProfile}`
+          : null;
+
   if (!currentUser) {
     return (
-      <ErrorBoundary>
-        <React.Suspense fallback={<LoadingSurface label="Opening Human World" fullscreen/>}>
-          <AuthOverlay onSuccess={handleEnterWorld} />
-        </React.Suspense>
-      </ErrorBoundary>
+      <React.Suspense fallback={<LoadingSurface label="Opening Human World" fullscreen/>}>
+        <AuthOverlay onSuccess={handleEnterWorld} />
+      </React.Suspense>
     );
   }
 
   return (
-    <ErrorBoundary>
-      <div className="fixed inset-0 bg-zinc-950 flex flex-col">
+    <div className="fixed inset-0 bg-zinc-950 flex flex-col">
       {/* Main Content Area */}
       <main className="flex-1 relative overflow-hidden">
-        <React.Suspense fallback={<LoadingSurface label="Loading this space"/>}>
-          {currentView === 'MAP' && <WorldMap onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
-          {currentView === 'ROOM' && currentRoomId && (
-            <Room key={currentRoomId} roomId={currentRoomId} onLeave={handleLeaveRoom} onEnterRoom={handleEnterRoom} onOpenProfile={handleOpenProfile} />
-          )}
-          {currentView === 'FEED' && <SocialFeed onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
-          {currentView === 'DISCOVERY' && <Discovery onEnterRoom={handleEnterRoom} />}
-          {currentView === 'SUPPORT' && <SupportHumanWorld />}
-          {currentView === 'PROFILE' && <Profile isOwnProfile username={currentUser.username} currentUserId={currentUser.id} />}
-        </React.Suspense>
+        <ErrorBoundary
+          key={`${currentView}:${currentRoomId ?? 'none'}`}
+          title="This space could not open"
+          message="Your identity and session remain safe. Try this area again or return to the World map."
+          onExit={recoverToWorld}
+        >
+          <React.Suspense fallback={<LoadingSurface label="Loading this space"/>}>
+            {currentView === 'MAP' && <WorldMap onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
+            {currentView === 'ROOM' && currentRoomId && (
+              <Room key={currentRoomId} roomId={currentRoomId} onLeave={handleLeaveRoom} onEnterRoom={handleEnterRoom} onOpenProfile={handleOpenProfile} />
+            )}
+            {currentView === 'FEED' && <SocialFeed onEnterRoom={handleEnterRoom} currentUser={currentUser} />}
+            {currentView === 'DISCOVERY' && <Discovery onEnterRoom={handleEnterRoom} />}
+            {currentView === 'SUPPORT' && <SupportHumanWorld />}
+            {currentView === 'PROFILE' && <Profile isOwnProfile username={currentUser.username} currentUserId={currentUser.id} />}
+          </React.Suspense>
+        </ErrorBoundary>
 
         {/* Modals */}
-        <React.Suspense fallback={null}>
-          {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} onSelect={handleSearchSelect} />}
-          {showNotifs && <Notifications onClose={() => setShowNotifs(false)} />}
+        {overlayKey ? (
+          <ErrorBoundary
+            key={overlayKey}
+            title="This panel could not open"
+            message="The rest of Human World is still available. Try the panel again or return to the World map."
+            onExit={recoverToWorld}
+          >
+            <React.Suspense fallback={<LoadingSurface label="Opening panel"/>}>
+              {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} onSelect={handleSearchSelect} />}
+              {showNotifs && <Notifications onClose={() => setShowNotifs(false)} />}
 
-          {showAvatarCustomizer && currentUser && <AvatarCustomizer userId={currentUser.id} onClose={() => setShowAvatarCustomizer(false)} onSave={() => setShowAvatarCustomizer(false)} />}
+              {showAvatarCustomizer && currentUser && <AvatarCustomizer userId={currentUser.id} onClose={() => setShowAvatarCustomizer(false)} onSave={() => setShowAvatarCustomizer(false)} />}
 
-          {/* Dynamic Profile Overlay */}
-          {selectedProfile && (
-            <Profile username={selectedProfile} onClose={() => setSelectedProfile(null)} currentUserId={currentUser.id} />
-          )}
-        </React.Suspense>
+              {/* Dynamic Profile Overlay */}
+              {selectedProfile && (
+                <Profile username={selectedProfile} onClose={() => setSelectedProfile(null)} currentUserId={currentUser.id} />
+              )}
+            </React.Suspense>
+          </ErrorBoundary>
+        ) : null}
 
         {showMoreMenu && (
           <MoreMenu
@@ -164,21 +215,21 @@ function App() {
             icon={<MapIcon />}
             label="World"
             isActive={currentView === 'MAP' || inRoom}
-            onClick={() => setCurrentView('MAP')}
+            onClick={() => navigateTo('MAP')}
             compact={inRoom}
           />
           <NavItem
             icon={<MessagesSquare />}
             label="Feed"
             isActive={currentView === 'FEED'}
-            onClick={() => setCurrentView('FEED')}
+            onClick={() => navigateTo('FEED')}
             compact={inRoom}
           />
           <NavItem
             icon={<Compass />}
             label="Discover"
             isActive={currentView === 'DISCOVERY'}
-            onClick={() => setCurrentView('DISCOVERY')}
+            onClick={() => navigateTo('DISCOVERY')}
             compact={inRoom}
           />
           <NavItem
@@ -192,7 +243,7 @@ function App() {
             icon={<Menu />}
             label="More"
             isActive={showMoreMenu || showSearch || showNotifs || currentView === 'SUPPORT'}
-            onClick={() => setShowMoreMenu(true)}
+            onClick={handleOpenMore}
             compact={inRoom}
           />
         </div>
@@ -216,21 +267,21 @@ function App() {
             icon={<MapIcon />}
             label="World"
             isActive={currentView === 'MAP' || inRoom}
-            onClick={() => setCurrentView('MAP')}
+            onClick={() => navigateTo('MAP')}
             compact={inRoom}
           />
           <NavItem
             icon={<MessagesSquare />}
             label="Feed"
             isActive={currentView === 'FEED'}
-            onClick={() => setCurrentView('FEED')}
+            onClick={() => navigateTo('FEED')}
             compact={inRoom}
           />
           <NavItem
             icon={<Compass />}
             label="Discover"
             isActive={currentView === 'DISCOVERY'}
-            onClick={() => setCurrentView('DISCOVERY')}
+            onClick={() => navigateTo('DISCOVERY')}
             compact={inRoom}
           />
           <NavItem
@@ -250,7 +301,6 @@ function App() {
         </div>
       </nav>
     </div>
-    </ErrorBoundary>
   );
 }
 
