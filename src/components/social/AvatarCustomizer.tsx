@@ -67,7 +67,7 @@ export function AvatarCustomizer({ onClose, onSave }: AvatarCustomizerProps) {
     <div
       aria-labelledby="avatar-customizer-title"
       aria-modal="true"
-      className="absolute inset-0 flex items-center justify-center bg-zinc-950/90 p-4 backdrop-blur-md"
+      className="absolute inset-0 flex items-start justify-center overflow-y-auto bg-zinc-950/90 p-4 backdrop-blur-md sm:items-center"
       onKeyDown={(event) => {
         if (event.key === 'Escape') onClose();
       }}
