@@ -79,7 +79,7 @@ function App() {
         {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} onSelect={(t, id) => { setShowSearch(false); if (t==='room') handleEnterRoom(id); else if (t==='human') handleOpenProfile(id); }} />}
         {showNotifs && <Notifications onClose={() => setShowNotifs(false)} />}
 
-        {showAvatarCustomizer && currentUser && <AvatarCustomizer userId={currentUser.id} onClose={() => setShowAvatarCustomizer(false)} onSave={() => setShowAvatarCustomizer(false)} />}
+        {showAvatarCustomizer && currentUser && <AvatarCustomizer onClose={() => setShowAvatarCustomizer(false)} onSave={() => setShowAvatarCustomizer(false)} />}
 
         {/* Dynamic Profile Overlay */}
         {selectedProfile && (

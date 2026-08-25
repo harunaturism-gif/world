@@ -27,7 +27,7 @@ export function Profile({ username = "Citizen_0x89", onClose, currentUserId }: P
         setFollowing(followingCount);
 
         if (currentUserId && currentUserId !== data.id) {
-          const followStatus = await ProfileService.checkIsFollowing(currentUserId, data.id);
+          const followStatus = await ProfileService.checkIsFollowing(data.id);
           setIsFollowing(followStatus);
         }
       }
@@ -38,7 +38,7 @@ export function Profile({ username = "Citizen_0x89", onClose, currentUserId }: P
 
   const handleFollowToggle = async () => {
     if (!profile || !currentUserId) return;
-    const success = await ProfileService.toggleFollow(currentUserId, profile.id, isFollowing);
+    const success = await ProfileService.toggleFollow(profile.id, isFollowing);
     if (success) {
       setFollowers(prev => isFollowing ? prev - 1 : prev + 1);
       setIsFollowing(!isFollowing);

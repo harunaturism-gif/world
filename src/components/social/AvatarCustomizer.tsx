@@ -1,19 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { AvatarService, AvatarState } from '../../services/AvatarService';
 
 interface AvatarCustomizerProps {
-  userId: string;
   onClose: () => void;
   onSave: () => void;
 }
 
-export function AvatarCustomizer({ userId, onClose, onSave }: AvatarCustomizerProps) {
-  const [avatar, setAvatar] = useState<AvatarState>(AvatarService.getAvatar(userId));
+export function AvatarCustomizer({ onClose, onSave }: AvatarCustomizerProps) {
+  const [avatar, setAvatar] = useState<AvatarState>(AvatarService.getCachedAvatar());
 
-  const handleSave = () => {
-    // In a real app this would save to Supabase
-    AvatarService.saveAvatar(userId, avatar);
+  useEffect(() => {
+    void AvatarService.getAvatar().then(setAvatar);
+  }, []);
+
+  const handleSave = async () => {
+    await AvatarService.saveAvatar(avatar);
     onSave();
   };
 

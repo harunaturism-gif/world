@@ -71,7 +71,7 @@ export function SocialFeed({ onEnterRoom, currentUser }: SocialFeedProps) {
   const handleCreatePost = async () => {
     if (!currentUser || !newPostContent.trim()) return;
     setIsPosting(true);
-    const newPost = await FeedService.createPost(currentUser.id, currentUser.username, newPostContent);
+    const newPost = await FeedService.createPost(newPostContent);
     if (newPost) {
       setPosts(prev => [newPost, ...prev]);
       setNewPostContent('');
