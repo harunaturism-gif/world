@@ -1,10 +1,9 @@
-import { Check, X } from 'lucide-react';
-import { useState } from 'react';
+import { Check, Loader2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { AvatarService } from '../../services/AvatarService';
 import type { AvatarState } from '../../services/AvatarService';
 
 interface AvatarCustomizerProps {
-  userId: string;
   onClose: () => void;
   onSave: () => void;
 }
@@ -31,12 +30,37 @@ function swatch(color: number) {
   return `#${color.toString(16).padStart(6, '0')}`;
 }
 
-export function AvatarCustomizer({ userId, onClose, onSave }: AvatarCustomizerProps) {
-  const [avatar, setAvatar] = useState<AvatarState>(() => AvatarService.getAvatar(userId));
+export function AvatarCustomizer({ onClose, onSave }: AvatarCustomizerProps) {
+  const [avatar, setAvatar] = useState<AvatarState>(AvatarService.getCachedAvatar());
+  const [isSaving, setIsSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const handleSave = () => {
-    AvatarService.saveAvatar(userId, avatar);
-    onSave();
+  useEffect(() => {
+    let active = true;
+    AvatarService.getAvatar()
+      .then((appearance) => {
+        if (active) setAvatar(appearance);
+      })
+      .catch(() => {
+        if (active) setNotice('Your saved appearance could not be loaded. You can still edit this preview.');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleSave = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    setNotice(null);
+    try {
+      await AvatarService.saveAvatar(avatar);
+      onSave();
+    } catch {
+      setNotice('Your avatar could not be saved. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -92,8 +116,10 @@ export function AvatarCustomizer({ userId, onClose, onSave }: AvatarCustomizerPr
           ))}
         </div>
 
-        <button type="button" onClick={handleSave} className="mt-7 w-full rounded-xl bg-white py-3 font-semibold text-black transition-colors hover:bg-zinc-200">
-          Save avatar
+        <div aria-live="polite" className="min-h-5 pt-3 text-center text-xs text-rose-300">{notice}</div>
+        <button type="button" disabled={isSaving} onClick={handleSave} className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-white py-3 font-semibold text-black transition-colors hover:bg-zinc-200 disabled:cursor-wait disabled:opacity-65">
+          {isSaving ? <Loader2 aria-hidden="true" className="animate-spin" size={16}/> : null}
+          {isSaving ? 'Saving…' : 'Save avatar'}
         </button>
       </div>
     </div>

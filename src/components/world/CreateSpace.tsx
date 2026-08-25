@@ -18,7 +18,7 @@ export function CreateSpace({ currentUser, onClose, onSuccess }: CreateSpaceProp
     e.preventDefault();
     if (!name.trim() || !currentUser) return;
     setLoading(true);
-    const room = await RoomService.createRoom(name, type, currentUser.id);
+    const room = await RoomService.createRoom(name, type);
     if (room) {
       onSuccess(room.id);
     }

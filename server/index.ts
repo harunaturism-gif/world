@@ -17,7 +17,6 @@ import {
   isExpectedBrowserOrigin,
   serializeLogoutCookie,
   serializeSessionCookie,
-  signApplicationSession,
   verifyApplicationSession,
 } from './appSession.js';
 import {
@@ -29,6 +28,12 @@ import {
   parseClientWebSocketMessage,
   type PublicPlayerState,
 } from './webSocketSession.js';
+import { createPersistenceConfig, issuePersistedApplicationSession, type PersistenceRepository } from './persistence.js';
+import { createPersistenceRouter } from './persistenceRoutes.js';
+import {
+  createSupabasePersistenceRepository,
+  DevelopmentMemoryPersistenceRepository,
+} from './supabasePersistence.js';
 
 dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
 
@@ -43,6 +48,16 @@ const wss = new WebSocketServer({
 const appSessionConfig = createAppSessionConfig(process.env);
 if (!appSessionConfig && process.env.NODE_ENV !== 'development') {
   throw new Error('Invalid application-session server configuration');
+}
+const persistenceConfig = createPersistenceConfig(process.env);
+if (!persistenceConfig && process.env.NODE_ENV !== 'development') {
+  throw new Error('Invalid persistence server configuration');
+}
+let persistenceRepository: PersistenceRepository | null = null;
+if (persistenceConfig?.mode === 'supabase') {
+  persistenceRepository = createSupabasePersistenceRepository(persistenceConfig);
+} else if (persistenceConfig?.mode === 'development-mock') {
+  persistenceRepository = new DevelopmentMemoryPersistenceRepository();
 }
 
 function rejectWebSocketUpgrade(socket: Parameters<typeof wss.handleUpgrade>[1], statusCode: number) {
@@ -121,7 +136,7 @@ app.use('/api/auth', (req, res, next) => {
   return next();
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '16kb', strict: true }));
 
 
 
@@ -198,9 +213,21 @@ app.post('/api/auth/verify', async (req, res) => {
     }
 
     const user = deriveInternalUser(verifiedWorldSession.sessionId, appSessionConfig.identitySecret);
-    const applicationToken = signApplicationSession(user, appSessionConfig.sessionSecret);
-    res.setHeader('Set-Cookie', serializeSessionCookie(applicationToken, appSessionConfig.isProduction));
-    return res.json(createSanitizedAuthResponse(user));
+    if (!persistenceRepository) {
+      return res.status(503).json({ error: 'Persistence service unavailable' });
+    }
+    try {
+      const applicationToken = await issuePersistedApplicationSession(
+        persistenceRepository,
+        user,
+        appSessionConfig.sessionSecret,
+      );
+      res.setHeader('Set-Cookie', serializeSessionCookie(applicationToken, appSessionConfig.isProduction));
+      return res.json(createSanitizedAuthResponse(user));
+    } catch {
+      console.error('Verified profile persistence failed');
+      return res.status(503).json({ error: 'Persistence service unavailable' });
+    }
   } catch {
     if (controller.signal.aborted) {
       return res.status(504).json({ error: 'World verification timed out' });
@@ -234,6 +261,18 @@ app.post('/api/auth/logout', (_req, res) => {
 
   res.setHeader('Set-Cookie', serializeLogoutCookie(appSessionConfig.isProduction));
   return res.json({ success: true });
+});
+
+app.use('/api/persistence', createPersistenceRouter({
+  appSessionConfig,
+  repository: persistenceRepository,
+}));
+
+app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
+  if (error instanceof SyntaxError || (typeof error === 'object' && error !== null && 'type' in error)) {
+    return response.status(400).json({ error: 'Invalid request body' });
+  }
+  return response.status(500).json({ error: 'Request failed' });
 });
 
 type ServerWebSocketMessage =

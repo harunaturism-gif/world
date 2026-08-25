@@ -53,7 +53,7 @@ export function Profile({ username = 'Citizen_0x89', onClose, currentUserId, isO
           ProfileService.getFollowersCount(data.id),
           ProfileService.getFollowingCount(data.id),
           currentUserId && !viewingOwnProfile
-            ? ProfileService.checkIsFollowing(currentUserId, data.id)
+            ? ProfileService.checkIsFollowing(data.id)
             : Promise.resolve(false),
         ]);
 
@@ -81,7 +81,7 @@ export function Profile({ username = 'Citizen_0x89', onClose, currentUserId, isO
     setFollowPending(true);
     setFollowError(null);
     try {
-      const success = await ProfileService.toggleFollow(currentUserId, profile.id, isFollowing);
+      const success = await ProfileService.toggleFollow(profile.id, isFollowing);
       if (!success) throw new Error('Follow rejected');
 
       setFollowers((current) => isFollowing ? Math.max(0, current - 1) : current + 1);

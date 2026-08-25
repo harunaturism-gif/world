@@ -187,7 +187,7 @@ function App() {
               {showSearch && <GlobalSearch onClose={() => setShowSearch(false)} onSelect={handleSearchSelect} />}
               {showNotifs && <Notifications onClose={() => setShowNotifs(false)} />}
 
-              {showAvatarCustomizer && currentUser && <AvatarCustomizer userId={currentUser.id} onClose={() => setShowAvatarCustomizer(false)} onSave={() => setShowAvatarCustomizer(false)} />}
+              {showAvatarCustomizer && currentUser && <AvatarCustomizer onClose={() => setShowAvatarCustomizer(false)} onSave={() => setShowAvatarCustomizer(false)} />}
 
               {/* Dynamic Profile Overlay */}
               {selectedProfile && (

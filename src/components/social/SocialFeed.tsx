@@ -188,7 +188,7 @@ export function SocialFeed({ onEnterRoom, currentUser }: SocialFeedProps) {
     setIsPosting(true);
     setComposerNotice(null);
     try {
-      const newPost = await FeedService.createPost(currentUser.id, currentUser.username, trimmedPost);
+      const newPost = await FeedService.createPost(trimmedPost);
       if (!newPost) throw new Error('Post rejected');
 
       setPosts((current) => [newPost, ...current]);
