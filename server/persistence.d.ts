@@ -44,6 +44,8 @@ export interface RoomRecord {
     created_at: string;
     top: string;
     left: string;
+    land_status: 'public' | 'available' | 'owned' | 'reserved';
+    price_hum: number | null;
 }
 export interface AvatarAppearance {
     baseColor: number;

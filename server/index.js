@@ -5,6 +5,10 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { createSessionRpContext, getVerifiedWorldSession, isValidProofPayload, isValidWorldRpId, } from './authSession.js';
 import { createAppSessionConfig, createSanitizedAuthResponse, deriveInternalUser, extractSessionToken, isExpectedBrowserOrigin, serializeLogoutCookie, serializeSessionCookie, verifyApplicationSession, } from './appSession.js';
+import { createAdminConfig, shouldBootstrapOwner } from './adminAuthorization.js';
+import { createAdminRouter } from './adminRoutes.js';
+import { DevelopmentAdminRepository } from './developmentAdminRepository.js';
+import { createSupabaseAdminRepository } from './supabaseAdminRepository.js';
 import { AuthenticatedMultiplayerState, MAX_WEBSOCKET_PAYLOAD_BYTES, attachWebSocketAuthentication, authenticateWebSocketUpgrade, getWebSocketAuthentication, parseClientWebSocketMessage, } from './webSocketSession.js';
 import { createPersistenceConfig, issuePersistedApplicationSession } from './persistence.js';
 import { createPersistenceRouter } from './persistenceRoutes.js';
@@ -25,12 +29,18 @@ const persistenceConfig = createPersistenceConfig(process.env);
 if (!persistenceConfig && process.env.NODE_ENV !== 'development') {
     throw new Error('Invalid persistence server configuration');
 }
+const adminConfig = createAdminConfig(process.env);
+if (!adminConfig)
+    throw new Error('Invalid admin authorization server configuration');
 let persistenceRepository = null;
+let adminRepository = null;
 if (persistenceConfig?.mode === 'supabase') {
     persistenceRepository = createSupabasePersistenceRepository(persistenceConfig);
+    adminRepository = createSupabaseAdminRepository(persistenceConfig);
 }
 else if (persistenceConfig?.mode === 'development-mock') {
     persistenceRepository = new DevelopmentMemoryPersistenceRepository();
+    adminRepository = new DevelopmentAdminRepository();
 }
 function rejectWebSocketUpgrade(socket, statusCode) {
     const statusText = statusCode === 400
@@ -100,7 +110,7 @@ app.use('/api/auth', (req, res, next) => {
     }
     return next();
 });
-app.use(express.json({ limit: '16kb', strict: true }));
+app.use('/api/auth', express.json({ limit: '16kb', strict: true }));
 // Session proofs use an RP signature without an action. Action-bound signatures
 // belong to uniqueness proofs and must not influence this endpoint.
 app.post('/api/auth/session-rp-context', (_req, res) => {
@@ -154,6 +164,11 @@ app.post('/api/auth/verify', async (req, res) => {
         }
         try {
             const applicationToken = await issuePersistedApplicationSession(persistenceRepository, user, appSessionConfig.sessionSecret);
+            if (shouldBootstrapOwner(adminConfig, user.id)) {
+                if (!adminRepository)
+                    throw new Error('Admin persistence unavailable');
+                await adminRepository.ensureBootstrapOwner(user.id);
+            }
             res.setHeader('Set-Cookie', serializeSessionCookie(applicationToken, appSessionConfig.isProduction));
             return res.json(createSanitizedAuthResponse(user));
         }
@@ -193,7 +208,12 @@ app.post('/api/auth/logout', (_req, res) => {
 });
 app.use('/api/persistence', createPersistenceRouter({
     appSessionConfig,
+    publishedRooms: adminRepository,
     repository: persistenceRepository,
+}));
+app.use('/api/admin', createAdminRouter({
+    appSessionConfig,
+    repository: adminRepository,
 }));
 app.use((error, _request, response, _next) => {
     if (error instanceof SyntaxError || (typeof error === 'object' && error !== null && 'type' in error)) {

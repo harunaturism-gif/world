@@ -1,6 +1,5 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { lazy, Suspense, useState, useCallback, useEffect, useMemo } from 'react';
 import { ArrowLeft, Users, Info, Coffee, GalleryVerticalEnd, Building2, Settings2 } from 'lucide-react';
-import { AdminControlPanel } from '../admin/AdminControlPanel';
 import { Chat } from '../social/Chat';
 import { CentralPlazaEngine } from './CentralPlazaEngine';
 import { ROOM_MAP_UPDATED_EVENT, RoomService, type RoomData } from '../../services/RoomService';
@@ -10,6 +9,9 @@ import type { PlayerSpeech } from '../../game/roomEngine';
 import { centralPlazaRoom } from '../../game/worldManifest';
 import { loadEditableRoom, updateCatalogObject } from '../../game/adminRoomStore';
 import type { RoomDefinition } from '../../game/roomEngine';
+import { AdminAuthorizationError, AdminService, type AdminSession, useDevelopmentAdmin } from '../../services/AdminService';
+
+const AdminControlPanel = lazy(() => import('../admin/AdminControlPanel').then((module) => ({ default: module.AdminControlPanel })));
 
 export interface ChatMessage {
   id: number;
@@ -36,14 +38,24 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
   const [selectedAdminObjectId, setSelectedAdminObjectId] = useState<string | null>(null);
   const [isDisconnected, setIsDisconnected] = useState(false);
   const [playerSpeech, setPlayerSpeech] = useState<PlayerSpeech | null>(null);
-  const adminEnabled = import.meta.env.DEV || import.meta.env.VITE_ENABLE_ADMIN_PANEL === 'true';
+  const [adminSession, setAdminSession] = useState<AdminSession | null>(null);
+  const [layoutVersion, setLayoutVersion] = useState(0);
+  const adminEnabled = roomId === 'central-plaza' && adminSession?.capabilities.includes('rooms:write') === true;
 
-  const openAdmin = useCallback(() => {
-    const draft = loadEditableRoom(centralPlazaRoom);
-    setAdminRoom(draft);
-    setSelectedAdminObjectId(draft.objects[0]?.id ?? null);
-    setShowAdmin(true);
-  }, []);
+  const openAdmin = useCallback(async () => {
+    if (!adminEnabled) return;
+    try {
+      const published = useDevelopmentAdmin ? null : await AdminService.getLayout(centralPlazaRoom.id);
+      const draft = useDevelopmentAdmin ? loadEditableRoom(centralPlazaRoom) : published?.layout ?? structuredClone(centralPlazaRoom);
+      setLayoutVersion(published?.version ?? 0);
+      setAdminRoom(draft);
+      setSelectedAdminObjectId(draft.objects[0]?.id ?? null);
+      setShowAdmin(true);
+    } catch (error) {
+      if (error instanceof AdminAuthorizationError) setAdminSession(null);
+      setToast('Admin authorization is unavailable.');
+    }
+  }, [adminEnabled]);
 
   const closeAdmin = useCallback(() => {
     setShowAdmin(false);
@@ -63,18 +75,34 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
   } : undefined, [adminRoom, moveAdminObject, selectedAdminObjectId, showAdmin]);
 
   useEffect(() => {
-    const refreshRoomMeta = () => setRoomData(RoomService.getRoom(roomId));
-    refreshRoomMeta();
+    let active = true;
+    const refreshRoomMeta = async () => {
+      try {
+        const rooms = await RoomService.getRooms();
+        if (active) setRoomData(rooms.find((room) => room.id === roomId) ?? RoomService.getRoom(roomId));
+      } catch {
+        if (active) setRoomData(RoomService.getRoom(roomId));
+      }
+    };
+    void refreshRoomMeta();
     window.addEventListener(ROOM_MAP_UPDATED_EVENT, refreshRoomMeta);
-    return () => window.removeEventListener(ROOM_MAP_UPDATED_EVENT, refreshRoomMeta);
+    return () => { active = false; window.removeEventListener(ROOM_MAP_UPDATED_EVENT, refreshRoomMeta); };
   }, [roomId]);
+
+  useEffect(() => {
+    let active = true;
+    void AdminService.getSession()
+      .then((session) => { if (active) setAdminSession(session); })
+      .catch(() => { if (active) setAdminSession(null); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!adminEnabled) return;
     const toggleAdmin = (event: KeyboardEvent) => {
       if (event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault();
-        if (showAdmin) closeAdmin(); else openAdmin();
+        if (showAdmin) closeAdmin(); else void openAdmin();
       }
     };
     window.addEventListener('keydown', toggleAdmin);
@@ -111,7 +139,7 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
         </div>
         <div className="flex items-center gap-1">
           {adminEnabled && (
-            <button onClick={openAdmin} aria-label="Admin control panel" title="Admin control panel · Shift+A" className="rounded-full p-2 text-amber-200/65 transition-colors hover:bg-white/10 hover:text-amber-100">
+            <button onClick={() => void openAdmin()} aria-label="Admin control panel" title="Admin control panel · Shift+A" className="rounded-full p-2 text-amber-200/65 transition-colors hover:bg-white/10 hover:text-amber-100">
               <Settings2 size={19}/>
             </button>
           )}
@@ -163,17 +191,23 @@ export function Room({ roomId, onLeave, onEnterRoom, onOpenProfile }: RoomProps)
       )}
 
       {showAdmin && adminEnabled && adminRoom && (
-        <AdminControlPanel
-          onClose={closeAdmin}
-          room={adminRoom}
-          selectedObjectId={selectedAdminObjectId}
-          onRoomChange={setAdminRoom}
-          onSelectedObjectIdChange={setSelectedAdminObjectId}
-          onEnterRoom={(targetRoomId) => {
-            closeAdmin();
-            onEnterRoom(targetRoomId);
-          }}
-        />
+        <Suspense fallback={null}>
+          <AdminControlPanel
+            adminSession={adminSession!}
+            layoutVersion={layoutVersion}
+            onAuthorizationLost={() => { closeAdmin(); setAdminSession(null); setToast('Admin authorization is no longer available.'); }}
+            onClose={closeAdmin}
+            onLayoutVersionChange={setLayoutVersion}
+            room={adminRoom}
+            selectedObjectId={selectedAdminObjectId}
+            onRoomChange={setAdminRoom}
+            onSelectedObjectIdChange={setSelectedAdminObjectId}
+            onEnterRoom={(targetRoomId) => {
+              closeAdmin();
+              onEnterRoom(targetRoomId);
+            }}
+          />
+        </Suspense>
       )}
     </div>
   );

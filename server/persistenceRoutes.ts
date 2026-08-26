@@ -1,8 +1,10 @@
 import express, { type Request, type Response } from 'express';
+import type { AdminRepository } from './adminAuthorization.js';
 import type { AppSessionConfig, InternalUser } from './appSession.js';
 import {
   authenticatePersistenceRequest,
   isInternalUserId,
+  isRoomId,
   isUsername,
   parseAvatarAppearance,
   parseCreatePostInput,
@@ -25,6 +27,7 @@ function persistenceFailure(response: Response) {
 
 export function createPersistenceRouter(options: {
   appSessionConfig: AppSessionConfig | null;
+  publishedRooms?: Pick<AdminRepository, 'getRoomLayout'> | null;
   repository: PersistenceRepository | null;
 }) {
   const router = express.Router();
@@ -127,6 +130,15 @@ export function createPersistenceRouter(options: {
 
   router.get('/rooms', async (_request, response) => {
     try { return response.json({ rooms: await options.repository!.listRooms() }); }
+    catch { return persistenceFailure(response); }
+  });
+
+  router.use(express.json({ limit: '16kb', strict: true }));
+
+  router.get('/rooms/:roomId/layout', async (request, response) => {
+    if (!isRoomId(request.params.roomId)) return response.status(400).json({ error: 'Invalid room ID' });
+    if (!options.publishedRooms) return persistenceFailure(response);
+    try { return response.json({ published: await options.publishedRooms.getRoomLayout(request.params.roomId) }); }
     catch { return persistenceFailure(response); }
   });
 

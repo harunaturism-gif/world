@@ -160,9 +160,9 @@ class SupabasePersistenceRepository {
     }
 }
 const DEMO_ROOMS = [
-    { id: 'central-plaza', name: 'Central Plaza', owner_id: null, type: 'plaza', capacity: 50, is_public: true, created_at: '', top: '48%', left: '50%' },
-    { id: 'lunas-cafe', name: "Luna's Cafe", owner_id: null, type: 'cafe', capacity: 24, is_public: true, created_at: '', top: '68%', left: '76%' },
-    { id: 'human-gallery', name: 'Human Gallery', owner_id: null, type: 'gallery', capacity: 30, is_public: true, created_at: '', top: '27%', left: '25%' },
+    { id: 'central-plaza', name: 'Central Plaza', owner_id: null, type: 'plaza', capacity: 50, is_public: true, created_at: '', top: '48%', left: '50%', land_status: 'public', price_hum: null },
+    { id: 'lunas-cafe', name: "Luna's Cafe", owner_id: null, type: 'cafe', capacity: 24, is_public: true, created_at: '', top: '68%', left: '76%', land_status: 'public', price_hum: null },
+    { id: 'human-gallery', name: 'Human Gallery', owner_id: null, type: 'gallery', capacity: 30, is_public: true, created_at: '', top: '27%', left: '25%', land_status: 'public', price_hum: null },
 ];
 export class DevelopmentMemoryPersistenceRepository {
     profiles = new Map();
@@ -193,7 +193,7 @@ export class DevelopmentMemoryPersistenceRepository {
         throw databaseFailure(); this.likes.add(`${postId}:${actorId}`); const count = [...this.likes].filter((key) => key.startsWith(`${postId}:`)).length; const post = this.posts.find((candidate) => candidate.id === postId); if (post)
         post.likes = count; return count; }
     async listRooms() { return [...this.rooms.values()].filter((room) => room.is_public); }
-    async createRoom(actor, input) { const room = { id: slugForRoom(input.name, randomBytes(4).toString('hex')), name: input.name, owner_id: actor.id, type: input.type, capacity: 20, is_public: true, created_at: new Date().toISOString(), top: '50%', left: '50%' }; this.rooms.set(room.id, room); return room; }
+    async createRoom(actor, input) { const room = { id: slugForRoom(input.name, randomBytes(4).toString('hex')), name: input.name, owner_id: actor.id, type: input.type, capacity: 20, is_public: true, created_at: new Date().toISOString(), top: '50%', left: '50%', land_status: 'public', price_hum: null }; this.rooms.set(room.id, room); return room; }
     async getAvatar(actorId) { return this.avatars.get(actorId) ?? null; }
     async updateAvatar(actorId, appearance) { this.avatars.set(actorId, appearance); return appearance; }
 }

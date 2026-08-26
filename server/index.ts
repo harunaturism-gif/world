@@ -19,6 +19,10 @@ import {
   serializeSessionCookie,
   verifyApplicationSession,
 } from './appSession.js';
+import { createAdminConfig, shouldBootstrapOwner, type AdminRepository } from './adminAuthorization.js';
+import { createAdminRouter } from './adminRoutes.js';
+import { DevelopmentAdminRepository } from './developmentAdminRepository.js';
+import { createSupabaseAdminRepository } from './supabaseAdminRepository.js';
 import {
   AuthenticatedMultiplayerState,
   MAX_WEBSOCKET_PAYLOAD_BYTES,
@@ -53,11 +57,16 @@ const persistenceConfig = createPersistenceConfig(process.env);
 if (!persistenceConfig && process.env.NODE_ENV !== 'development') {
   throw new Error('Invalid persistence server configuration');
 }
+const adminConfig = createAdminConfig(process.env);
+if (!adminConfig) throw new Error('Invalid admin authorization server configuration');
 let persistenceRepository: PersistenceRepository | null = null;
+let adminRepository: AdminRepository | null = null;
 if (persistenceConfig?.mode === 'supabase') {
   persistenceRepository = createSupabasePersistenceRepository(persistenceConfig);
+  adminRepository = createSupabaseAdminRepository(persistenceConfig);
 } else if (persistenceConfig?.mode === 'development-mock') {
   persistenceRepository = new DevelopmentMemoryPersistenceRepository();
+  adminRepository = new DevelopmentAdminRepository();
 }
 
 function rejectWebSocketUpgrade(socket: Parameters<typeof wss.handleUpgrade>[1], statusCode: number) {
@@ -136,7 +145,7 @@ app.use('/api/auth', (req, res, next) => {
   return next();
 });
 
-app.use(express.json({ limit: '16kb', strict: true }));
+app.use('/api/auth', express.json({ limit: '16kb', strict: true }));
 
 
 
@@ -222,6 +231,10 @@ app.post('/api/auth/verify', async (req, res) => {
         user,
         appSessionConfig.sessionSecret,
       );
+      if (shouldBootstrapOwner(adminConfig, user.id)) {
+        if (!adminRepository) throw new Error('Admin persistence unavailable');
+        await adminRepository.ensureBootstrapOwner(user.id);
+      }
       res.setHeader('Set-Cookie', serializeSessionCookie(applicationToken, appSessionConfig.isProduction));
       return res.json(createSanitizedAuthResponse(user));
     } catch {
@@ -265,7 +278,13 @@ app.post('/api/auth/logout', (_req, res) => {
 
 app.use('/api/persistence', createPersistenceRouter({
   appSessionConfig,
+  publishedRooms: adminRepository,
   repository: persistenceRepository,
+}));
+
+app.use('/api/admin', createAdminRouter({
+  appSessionConfig,
+  repository: adminRepository,
 }));
 
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
