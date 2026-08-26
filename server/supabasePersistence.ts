@@ -169,9 +169,9 @@ class SupabasePersistenceRepository implements PersistenceRepository {
 }
 
 const DEMO_ROOMS: RoomRecord[] = [
-  { id: 'central-plaza', name: 'Central Plaza', owner_id: null, type: 'plaza', capacity: 50, is_public: true, created_at: '', top: '48%', left: '50%' },
-  { id: 'lunas-cafe', name: "Luna's Cafe", owner_id: null, type: 'cafe', capacity: 24, is_public: true, created_at: '', top: '68%', left: '76%' },
-  { id: 'human-gallery', name: 'Human Gallery', owner_id: null, type: 'gallery', capacity: 30, is_public: true, created_at: '', top: '27%', left: '25%' },
+  { id: 'central-plaza', name: 'Central Plaza', owner_id: null, type: 'plaza', capacity: 50, is_public: true, created_at: '', top: '48%', left: '50%', land_status: 'public', price_hum: null },
+  { id: 'lunas-cafe', name: "Luna's Cafe", owner_id: null, type: 'cafe', capacity: 24, is_public: true, created_at: '', top: '68%', left: '76%', land_status: 'public', price_hum: null },
+  { id: 'human-gallery', name: 'Human Gallery', owner_id: null, type: 'gallery', capacity: 30, is_public: true, created_at: '', top: '27%', left: '25%', land_status: 'public', price_hum: null },
 ];
 
 export class DevelopmentMemoryPersistenceRepository implements PersistenceRepository {
@@ -197,7 +197,7 @@ export class DevelopmentMemoryPersistenceRepository implements PersistenceReposi
   async createPost(actor: InternalUser, input: CreatePostInput) { const room = input.roomId ? this.rooms.get(input.roomId) : null; if (input.roomId && !room) throw databaseFailure(); const post: PostRecord = { id: this.nextPostId++, author_id: actor.id, author_name: actor.username, content: input.content, created_at: new Date().toISOString(), room_id: input.roomId, room_name: room?.name ?? null, likes: 0, comments: 0, is_system: false }; this.posts.push(post); return post; }
   async likePost(actorId: string, postId: number) { if (!this.posts.some((post) => post.id === postId)) throw databaseFailure(); this.likes.add(`${postId}:${actorId}`); const count = [...this.likes].filter((key) => key.startsWith(`${postId}:`)).length; const post = this.posts.find((candidate) => candidate.id === postId); if (post) post.likes = count; return count; }
   async listRooms() { return [...this.rooms.values()].filter((room) => room.is_public); }
-  async createRoom(actor: InternalUser, input: CreateRoomInput) { const room: RoomRecord = { id: slugForRoom(input.name, randomBytes(4).toString('hex')), name: input.name, owner_id: actor.id, type: input.type, capacity: 20, is_public: true, created_at: new Date().toISOString(), top: '50%', left: '50%' }; this.rooms.set(room.id, room); return room; }
+  async createRoom(actor: InternalUser, input: CreateRoomInput) { const room: RoomRecord = { id: slugForRoom(input.name, randomBytes(4).toString('hex')), name: input.name, owner_id: actor.id, type: input.type, capacity: 20, is_public: true, created_at: new Date().toISOString(), top: '50%', left: '50%', land_status: 'public', price_hum: null }; this.rooms.set(room.id, room); return room; }
   async getAvatar(actorId: string) { return this.avatars.get(actorId) ?? null; }
   async updateAvatar(actorId: string, appearance: AvatarAppearance) { this.avatars.set(actorId, appearance); return appearance; }
 }

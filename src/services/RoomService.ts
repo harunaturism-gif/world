@@ -1,4 +1,6 @@
 import { persistenceRequest, useDevelopmentPersistence } from './persistenceApi';
+import type { RoomDefinition } from '../game/roomEngine';
+import { useDevelopmentAdmin } from './AdminService';
 
 export const ROOM_MAP_UPDATED_EVENT = 'human-world:map-updated';
 const ROOM_META_STORAGE_KEY = 'human-world:admin:room-meta:v1';
@@ -21,7 +23,7 @@ function readRoomOverrides(): Record<string, Partial<RoomData>> {
   try { return JSON.parse(window.localStorage.getItem(ROOM_META_STORAGE_KEY) ?? '{}') as Record<string, Partial<RoomData>>; }
   catch { return {}; }
 }
-function withOverrides(rooms: RoomData[]) { const overrides = readRoomOverrides(); return rooms.map((room) => ({ ...room, ...(overrides[room.id] ?? {}) })); }
+function withOverrides(rooms: RoomData[]) { if (!useDevelopmentAdmin) return rooms; const overrides = readRoomOverrides(); return rooms.map((room) => ({ ...room, ...(overrides[room.id] ?? {}) })); }
 function emitMapUpdate() { if (typeof window !== 'undefined') window.dispatchEvent(new Event(ROOM_MAP_UPDATED_EVENT)); }
 function getLocalRooms() { return withOverrides(demoRooms); }
 
@@ -33,13 +35,18 @@ export const RoomService = {
   },
   getAdminRooms(): RoomData[] { return getLocalRooms(); },
   getRoom(id: string) { const rooms = getLocalRooms(); return rooms.find((room) => room.id === id) ?? rooms[0]; },
+  notifyMapUpdated() { emitMapUpdate(); },
   saveRoomMeta(room: RoomData) {
-    if (typeof window === 'undefined') return;
+    if (!useDevelopmentAdmin || typeof window === 'undefined') return;
     const overrides = readRoomOverrides();
     overrides[room.id] = { name: room.name, capacity: room.capacity, is_public: room.is_public, top: room.top, left: room.left, land_status: room.land_status, price_hum: room.price_hum };
     window.localStorage.setItem(ROOM_META_STORAGE_KEY, JSON.stringify(overrides)); emitMapUpdate();
   },
-  resetRoomMeta(roomId: string) { if (typeof window === 'undefined') return; const overrides = readRoomOverrides(); delete overrides[roomId]; window.localStorage.setItem(ROOM_META_STORAGE_KEY, JSON.stringify(overrides)); emitMapUpdate(); },
+  resetRoomMeta(roomId: string) { if (!useDevelopmentAdmin || typeof window === 'undefined') return; const overrides = readRoomOverrides(); delete overrides[roomId]; window.localStorage.setItem(ROOM_META_STORAGE_KEY, JSON.stringify(overrides)); emitMapUpdate(); },
+  async getPublishedLayout(roomId: string): Promise<{ roomId: string; version: number; layout: RoomDefinition | null; updatedAt: string } | null> {
+    if (useDevelopmentAdmin) return null;
+    return (await persistenceRequest<{ published: { roomId: string; version: number; layout: RoomDefinition | null; updatedAt: string } | null }>(`/rooms/${encodeURIComponent(roomId)}/layout`)).published;
+  },
   async createRoom(name: string, type: string): Promise<RoomData> {
     if (useDevelopmentPersistence) {
       return { id: `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-demo`, name, type, owner_id: null, capacity: 20, is_public: true, created_at: new Date().toISOString(), top: '50%', left: '50%', presence: 1, land_status: 'public', price_hum: null };

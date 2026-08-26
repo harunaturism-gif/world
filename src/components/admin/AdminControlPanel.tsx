@@ -1,22 +1,34 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Building2, Clipboard, MapPinned, Plus, RotateCcw, Save, Trash2, X } from 'lucide-react';
 import {
   addCatalogObject,
   deleteRoomObject,
   exportEditableRoom,
+  notifyRoomUpdated,
   resetEditableRoom,
   saveEditableRoom,
   updateCatalogObject,
 } from '../../game/adminRoomStore';
 import { furnitureCatalog, type FurnitureId } from '../../game/furnitureCatalog';
 import { centralPlazaRoom } from '../../game/worldManifest';
-import { RoomService, type LandStatus, type RoomData } from '../../services/RoomService';
+import { demoRooms, RoomService, type LandStatus, type RoomData } from '../../services/RoomService';
+import {
+  AdminAuthorizationError,
+  AdminService,
+  AdminVersionConflictError,
+  type AdminSession,
+  useDevelopmentAdmin,
+} from '../../services/AdminService';
 
 type Tab = 'maps' | 'objects';
 
 interface Props {
+  adminSession: AdminSession;
+  layoutVersion: number;
+  onAuthorizationLost: () => void;
   onClose: () => void;
   onEnterRoom: (roomId: string) => void;
+  onLayoutVersionChange: (version: number) => void;
   room: typeof centralPlazaRoom;
   selectedObjectId: string | null;
   onRoomChange: (room: typeof centralPlazaRoom) => void;
@@ -27,13 +39,13 @@ interface Props {
 const fieldClass = 'w-full rounded-lg border border-white/10 bg-black/25 px-2.5 py-2 text-xs text-white outline-none focus:border-cyan-300/60';
 const buttonClass = 'rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10';
 
-export function AdminControlPanel({ onClose, onEnterRoom, room, selectedObjectId, onRoomChange, onSelectedObjectIdChange, onDirtyChange }: Props) {
+export function AdminControlPanel({ adminSession, layoutVersion, onAuthorizationLost, onClose, onEnterRoom, onLayoutVersionChange, room, selectedObjectId, onRoomChange, onSelectedObjectIdChange, onDirtyChange }: Props) {
   const [tab, setTab] = useState<Tab>('objects');
-  const [maps, setMaps] = useState<RoomData[]>(() => RoomService.getAdminRooms());
+  const [maps, setMaps] = useState<RoomData[]>(() => useDevelopmentAdmin ? RoomService.getAdminRooms() : []);
   const [catalogCategory, setCatalogCategory] = useState<string>('all');
   const [newPosition, setNewPosition] = useState({ x: 4, y: 4 });
   const [savedRoomJson, setSavedRoomJson] = useState(() => exportEditableRoom(room));
-  const [message, setMessage] = useState('Local admin draft. Backend publishing comes later.');
+  const [message, setMessage] = useState(useDevelopmentAdmin ? 'Explicit development-only local draft.' : `Authorized as ${adminSession.role}. Published changes are server versioned.`);
   const hasUnsavedChanges = exportEditableRoom(room) !== savedRoomJson;
 
   useEffect(() => {
@@ -50,20 +62,56 @@ export function AdminControlPanel({ onClose, onEnterRoom, room, selectedObjectId
 
   const categories = useMemo(() => Array.from(new Set(Object.values(furnitureCatalog).map((item) => item.editorCategory))), []);
 
+  const handleFailure = useCallback((error: unknown, fallback: string) => {
+    if (error instanceof AdminAuthorizationError) {
+      setMessage('Admin authorization is no longer available.');
+      onAuthorizationLost();
+      return;
+    }
+    if (error instanceof AdminVersionConflictError) {
+      setMessage('Version conflict: the published room changed. Your current draft is preserved.');
+      return;
+    }
+    setMessage(fallback);
+  }, [onAuthorizationLost]);
+
+  useEffect(() => {
+    if (useDevelopmentAdmin) return;
+    void AdminService.getRooms().then(setMaps).catch((error) => handleFailure(error, 'Admin room metadata is unavailable.'));
+  }, [handleFailure]);
+
   const patchMap = (id: string, patch: Partial<RoomData>) => {
     setMaps((current) => current.map((map) => map.id === id ? { ...map, ...patch } : map));
   };
 
-  const saveMap = (map: RoomData) => {
-    RoomService.saveRoomMeta(map);
-    setMaps(RoomService.getAdminRooms());
-    setMessage(`${map.name} map metadata saved locally.`);
+  const saveMap = async (map: RoomData) => {
+    try {
+      if (useDevelopmentAdmin) {
+        RoomService.saveRoomMeta(map);
+        setMaps(RoomService.getAdminRooms());
+      } else {
+        const saved = await AdminService.updateRoom(map);
+        setMaps((current) => current.map((candidate) => candidate.id === saved.id ? saved : candidate));
+        RoomService.notifyMapUpdated();
+      }
+      setMessage(`${map.name} map metadata published.`);
+    } catch (error) { handleFailure(error, 'Map metadata publish failed.'); }
   };
 
-  const resetMap = (roomId: string) => {
-    RoomService.resetRoomMeta(roomId);
-    setMaps(RoomService.getAdminRooms());
-    setMessage('Map metadata reset to manifest defaults.');
+  const resetMap = async (roomId: string) => {
+    try {
+      if (useDevelopmentAdmin) {
+        RoomService.resetRoomMeta(roomId);
+        setMaps(RoomService.getAdminRooms());
+      } else {
+        const defaults = demoRooms.find((candidate) => candidate.id === roomId);
+        if (!defaults) throw new Error('Missing room defaults');
+        const saved = await AdminService.updateRoom(defaults);
+        setMaps((current) => current.map((candidate) => candidate.id === saved.id ? saved : candidate));
+        RoomService.notifyMapUpdated();
+      }
+      setMessage('Map metadata reset to manifest defaults.');
+    } catch (error) { handleFailure(error, 'Map metadata reset failed.'); }
   };
 
   const patchSelectedObject = (patch: { x?: number; y?: number; direction?: number }) => {
@@ -94,22 +142,31 @@ export function AdminControlPanel({ onClose, onEnterRoom, room, selectedObjectId
     setMessage(`${furnitureCatalog[catalogId].id} added to the draft.`);
   };
 
-  const publishRoom = () => {
+  const publishRoom = async () => {
     try {
-      saveEditableRoom(room);
+      if (useDevelopmentAdmin) {
+        saveEditableRoom(room);
+      } else {
+        const published = await AdminService.publishLayout(room.id, layoutVersion, room);
+        onLayoutVersionChange(published.version);
+        notifyRoomUpdated(room.id);
+      }
       setSavedRoomJson(exportEditableRoom(room));
-      setMessage('Central Plaza saved in this browser. Reload will keep this version.');
-    } catch {
-      setMessage('Save failed. Browser storage may be blocked or full; the draft is still open.');
-    }
+      setMessage(useDevelopmentAdmin ? 'Development draft saved locally.' : `Central Plaza published as version ${layoutVersion + 1}.`);
+    } catch (error) { handleFailure(error, 'Publish failed. The current draft is still open.'); }
   };
 
-  const resetRoom = () => {
-    const next = resetEditableRoom(centralPlazaRoom);
-    onRoomChange(next);
-    onSelectedObjectIdChange(next.objects[0]?.id ?? null);
-    setSavedRoomJson(exportEditableRoom(next));
-    setMessage('Central Plaza local override removed.');
+  const resetRoom = async () => {
+    try {
+      const resetVersion = useDevelopmentAdmin ? 0 : await AdminService.resetLayout(room.id, layoutVersion);
+      const next = resetEditableRoom(centralPlazaRoom);
+      onRoomChange(next);
+      onSelectedObjectIdChange(next.objects[0]?.id ?? null);
+      onLayoutVersionChange(resetVersion);
+      setSavedRoomJson(exportEditableRoom(next));
+      notifyRoomUpdated(room.id);
+      setMessage(useDevelopmentAdmin ? 'Development override removed.' : 'Published room reset to manifest defaults.');
+    } catch (error) { handleFailure(error, 'Reset failed. The current draft is preserved.'); }
   };
 
   const copyRoomJson = async () => {
@@ -126,7 +183,7 @@ export function AdminControlPanel({ onClose, onEnterRoom, room, selectedObjectId
       <div className="flex h-full flex-col">
         <header className="flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-6">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[.24em] text-cyan-300">Human World Admin · v1</p>
+            <p className="text-[10px] font-black uppercase tracking-[.24em] text-cyan-300">Human World Admin · {adminSession.role}</p>
             <div className="flex items-center gap-2"><h1 className="text-lg font-black">Live Plaza editor</h1><span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${hasUnsavedChanges ? 'bg-amber-300/15 text-amber-200' : 'bg-emerald-300/15 text-emerald-200'}`}>{hasUnsavedChanges ? 'Unsaved' : 'Saved'}</span></div>
           </div>
           <button type="button" onClick={onClose} aria-label="Close admin panel" className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/5 hover:bg-white/10">
@@ -184,9 +241,9 @@ export function AdminControlPanel({ onClose, onEnterRoom, room, selectedObjectId
                       </label>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button type="button" className={`${buttonClass} border-emerald-300/25 text-emerald-100`} onClick={() => saveMap(map)}><span className="flex items-center gap-1.5"><Save size={14}/> Save</span></button>
+                      <button type="button" className={`${buttonClass} border-emerald-300/25 text-emerald-100`} onClick={() => void saveMap(map)}><span className="flex items-center gap-1.5"><Save size={14}/> Publish</span></button>
                       <button type="button" className={buttonClass} onClick={() => onEnterRoom(map.id)}>Enter</button>
-                      <button type="button" className={buttonClass} onClick={() => resetMap(map.id)}><span className="flex items-center gap-1.5"><RotateCcw size={14}/> Reset</span></button>
+                      <button type="button" className={buttonClass} onClick={() => void resetMap(map.id)}><span className="flex items-center gap-1.5"><RotateCcw size={14}/> Reset</span></button>
                     </div>
                   </article>
                 ))}
@@ -212,9 +269,9 @@ export function AdminControlPanel({ onClose, onEnterRoom, room, selectedObjectId
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-amber-300">Central Plaza</p><h2 className="text-base font-black">Selected object</h2></div>
                     <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={publishRoom} className={`${buttonClass} border-emerald-300/25 text-emerald-100`}><span className="flex items-center gap-1.5"><Save size={14}/> Save locally</span></button>
+                      <button type="button" onClick={() => void publishRoom()} className={`${buttonClass} border-emerald-300/25 text-emerald-100`}><span className="flex items-center gap-1.5"><Save size={14}/> Publish v{layoutVersion + 1}</span></button>
                       <button type="button" onClick={copyRoomJson} className={buttonClass}><span className="flex items-center gap-1.5"><Clipboard size={14}/> Copy JSON</span></button>
-                      <button type="button" onClick={resetRoom} className={buttonClass}><span className="flex items-center gap-1.5"><RotateCcw size={14}/> Reset room</span></button>
+                      <button type="button" onClick={() => void resetRoom()} className={buttonClass}><span className="flex items-center gap-1.5"><RotateCcw size={14}/> Reset room</span></button>
                     </div>
                   </div>
 
@@ -276,9 +333,9 @@ export function AdminControlPanel({ onClose, onEnterRoom, room, selectedObjectId
                   <p>✓ Same RoomDefinition as gameplay</p>
                   <p>✓ Catalog placement / move / rotate / delete</p>
                   <p>✓ Seat collision metadata rebuilt when moved</p>
-                  <p>✓ Local publish triggers live Plaza reload</p>
+                  <p>✓ Authenticated publish triggers live Plaza reload</p>
                   <p>✓ World-map sale metadata scaffold</p>
-                  <p className="pt-2 text-amber-200/70">Next: floor painting, wall editing, click-to-place, backend persistence and real admin RBAC.</p>
+                  <p className="pt-2 text-emerald-200/70">Server-authorized role and version checks active.</p>
                 </div>
               </aside>
             </section>

@@ -1,5 +1,5 @@
 import express, {} from 'express';
-import { authenticatePersistenceRequest, isInternalUserId, isUsername, parseAvatarAppearance, parseCreatePostInput, parseCreateRoomInput, parsePostId, } from './persistence.js';
+import { authenticatePersistenceRequest, isInternalUserId, isRoomId, isUsername, parseAvatarAppearance, parseCreatePostInput, parseCreateRoomInput, parsePostId, } from './persistence.js';
 const authenticatedRequests = new WeakMap();
 function userForRequest(request) {
     const user = authenticatedRequests.get(request);
@@ -137,6 +137,19 @@ export function createPersistenceRouter(options) {
     router.get('/rooms', async (_request, response) => {
         try {
             return response.json({ rooms: await options.repository.listRooms() });
+        }
+        catch {
+            return persistenceFailure(response);
+        }
+    });
+    router.use(express.json({ limit: '16kb', strict: true }));
+    router.get('/rooms/:roomId/layout', async (request, response) => {
+        if (!isRoomId(request.params.roomId))
+            return response.status(400).json({ error: 'Invalid room ID' });
+        if (!options.publishedRooms)
+            return persistenceFailure(response);
+        try {
+            return response.json({ published: await options.publishedRooms.getRoomLayout(request.params.roomId) });
         }
         catch {
             return persistenceFailure(response);

@@ -1,6 +1,7 @@
 import { furnitureCatalog, placeFurniture, type FurnitureId } from './furnitureCatalog';
 import type { IsoPoint } from './isometric';
 import type { RoomDefinition, RoomObjectDefinition } from './roomEngine';
+import { useDevelopmentAdmin } from '../services/AdminService';
 
 const ROOM_STORAGE_PREFIX = 'human-world:admin:room:';
 export const ROOM_UPDATED_EVENT = 'human-world:room-updated';
@@ -13,14 +14,14 @@ function roomStorageKey(roomId: string) {
   return `${ROOM_STORAGE_PREFIX}${roomId}`;
 }
 
-function emitRoomUpdate(roomId: string) {
+export function notifyRoomUpdated(roomId: string) {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(ROOM_UPDATED_EVENT, { detail: { roomId } }));
 }
 
 export function loadEditableRoom(baseRoom: RoomDefinition): RoomDefinition {
   const fallback = clone(baseRoom);
-  if (typeof window === 'undefined') return fallback;
+  if (!useDevelopmentAdmin || typeof window === 'undefined') return fallback;
 
   try {
     const raw = window.localStorage.getItem(roomStorageKey(baseRoom.id));
@@ -34,15 +35,15 @@ export function loadEditableRoom(baseRoom: RoomDefinition): RoomDefinition {
 }
 
 export function saveEditableRoom(room: RoomDefinition) {
-  if (typeof window === 'undefined') return;
+  if (!useDevelopmentAdmin || typeof window === 'undefined') return;
   window.localStorage.setItem(roomStorageKey(room.id), JSON.stringify(room));
-  emitRoomUpdate(room.id);
+  notifyRoomUpdated(room.id);
 }
 
 export function resetEditableRoom(baseRoom: RoomDefinition): RoomDefinition {
-  if (typeof window !== 'undefined') {
+  if (useDevelopmentAdmin && typeof window !== 'undefined') {
     window.localStorage.removeItem(roomStorageKey(baseRoom.id));
-    emitRoomUpdate(baseRoom.id);
+    notifyRoomUpdated(baseRoom.id);
   }
   return clone(baseRoom);
 }

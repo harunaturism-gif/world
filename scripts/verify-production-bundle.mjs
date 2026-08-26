@@ -8,7 +8,7 @@ const forbiddenPatterns = [
   { label: 'Supabase service-role identifier', pattern: /service[_-]?role/i },
   { label: 'direct Supabase browser dependency', pattern: /@supabase\/supabase-js/i },
   { label: 'direct Supabase client construction', pattern: /createClient\s*\(/ },
-  { label: 'production admin UI environment bypass', pattern: /VITE_ENABLE_ADMIN_PANEL/i },
+  { label: 'production admin UI environment bypass', pattern: /VITE_ENABLE_(?:ADMIN_PANEL|DEV_ADMIN)/i },
 ];
 
 async function listTextFiles(directory) {

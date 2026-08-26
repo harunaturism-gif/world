@@ -37,6 +37,7 @@ Frontend variables:
 - `VITE_WS_URL` — production WSS backend URL.
 - `VITE_WORLD_APP_ID` — public World application identifier.
 - `VITE_ENABLE_DEV_AUTH=false`.
+- `VITE_ENABLE_DEV_ADMIN=false`.
 
 Backend variables:
 
@@ -49,8 +50,9 @@ Backend variables:
 - `APP_IDENTITY_SECRET` — different independent random secret of at least 32 bytes.
 - `SUPABASE_URL`.
 - `SUPABASE_SERVICE_ROLE_KEY`.
-- Phase 5 admin bootstrap configuration, after its implementation and review.
-- All development mock/admin flags disabled.
+- `ADMIN_BOOTSTRAP_USER_IDS` — comma-separated internal IDs for the initial owner bootstrap; remove after the intended owners exist unless automatic repair is explicitly required.
+- `ENABLE_DEV_ADMIN=false`.
+- All development mock flags disabled.
 
 No backend variable may use a `VITE_` prefix.
 
