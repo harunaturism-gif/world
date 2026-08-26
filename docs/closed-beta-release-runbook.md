@@ -1,0 +1,121 @@
+# Human World closed-beta release runbook
+
+This runbook defines the minimum path from a reviewed commit to a reversible closed-beta release. A successful build alone is not a release decision.
+
+## Release gate
+
+The release candidate is GO only when all of the following are true:
+
+- Security Phases 1–5 are integrated into one reviewed commit.
+- The GitHub `Human World quality gate` is green for that exact commit.
+- All database migrations have been applied in order and verified.
+- Production contains no development authentication, persistence or admin bypass.
+- An owner, an editor and an ordinary user have passed the RBAC smoke matrix.
+- The frontend, HTTP API and authenticated WebSocket have passed the smoke flow below.
+- A rollback target and an operator are identified before promotion.
+
+Until every item is satisfied, the closed beta remains NO-GO.
+
+## Deployment topology
+
+The Vite frontend may be deployed to static hosting such as Vercel. The Express/WebSocket server requires hosting that supports long-lived WebSocket connections; do not assume a stateless serverless function can host the multiplayer server.
+
+Use separate public origins:
+
+- Frontend: HTTPS origin used by `APP_ORIGIN`.
+- Backend: HTTPS/WSS origin used by `VITE_BACKEND_URL` and `VITE_WS_URL`.
+- Database: Supabase reachable only from the backend service role.
+
+## Environment inventory
+
+Never copy secret values into tickets, chat, build logs or this repository.
+
+Frontend variables:
+
+- `VITE_BACKEND_URL` — production HTTPS backend URL.
+- `VITE_WS_URL` — production WSS backend URL.
+- `VITE_WORLD_APP_ID` — public World application identifier.
+- `VITE_ENABLE_DEV_AUTH=false`.
+
+Backend variables:
+
+- `NODE_ENV=production`.
+- `PORT`.
+- `APP_ORIGIN` — exact frontend origin, without wildcard matching.
+- `WORLD_RP_ID`.
+- `WORLD_RP_SIGNING_KEY`.
+- `APP_SESSION_SECRET` — independent random secret of at least 32 bytes.
+- `APP_IDENTITY_SECRET` — different independent random secret of at least 32 bytes.
+- `SUPABASE_URL`.
+- `SUPABASE_SERVICE_ROLE_KEY`.
+- Phase 5 admin bootstrap configuration, after its implementation and review.
+- All development mock/admin flags disabled.
+
+No backend variable may use a `VITE_` prefix.
+
+## Pre-deployment procedure
+
+1. Record the exact release commit and the previous known-good frontend/backend deployments.
+2. Run `npm ci` and `npm --prefix server ci` from clean checkouts.
+3. Run root unit tests when configured, typecheck, lint and production build.
+4. Run the complete server security test suite.
+5. Run `node scripts/verify-production-bundle.mjs` after the build.
+6. Rebuild the server and confirm `git diff --exit-code -- server`.
+7. Review migrations for destructive operations. Closed-beta migrations should be forward compatible.
+8. Back up production data before applying a migration that changes stored data.
+
+## Promotion order
+
+1. Apply pending Supabase migrations.
+2. Verify RLS is enabled and forced and that `anon`/`authenticated` grants remain revoked.
+3. Deploy the backend candidate without redirecting frontend traffic.
+4. Verify backend health, exact-Origin rejection, cookie authentication and WSS upgrade rejection/acceptance.
+5. Deploy a frontend preview against the candidate backend.
+6. Complete the smoke matrix.
+7. Promote the already-tested frontend artifact; do not rebuild a different artifact for production.
+8. Monitor backend errors, WebSocket disconnect rate and authentication failures during the initial beta window.
+
+## Required smoke flow
+
+Run on desktop and a 390 × 844 mobile viewport:
+
+1. Unauthenticated entry renders without console errors.
+2. World verification creates the HttpOnly application session.
+3. Refresh restores the authenticated session without exposing a token to JavaScript.
+4. World map loads persisted rooms.
+5. Enter a room and confirm the authenticated WebSocket identity.
+6. Move and chat; forged identity fields must be rejected.
+7. Create a post, like once, follow another user and save an avatar; refresh and confirm persistence.
+8. Confirm a second like is idempotent.
+9. Confirm an ordinary user cannot see or open admin controls.
+10. Confirm an editor can publish a room but cannot manage roles.
+11. Confirm an owner can manage roles and that revocation applies on the next request.
+12. Confirm stale room-layout versions receive a conflict without losing the local draft.
+13. Log out and confirm the session cookie is cleared and WebSocket access is rejected.
+
+## Rollback
+
+If the frontend fails, promote the previous known-good frontend artifact.
+
+If the backend fails, redirect traffic to the previous compatible backend release. Do not roll back a database migration destructively during an incident; prefer a forward-compatible corrective migration.
+
+If authentication integrity is uncertain:
+
+1. Disable new beta entry.
+2. Rotate `APP_SESSION_SECRET` to invalidate application sessions.
+3. Rotate exposed upstream or Supabase credentials if relevant.
+4. Revoke affected admin assignments directly through the protected operational path.
+5. Preserve sanitized audit records for investigation.
+
+## Release record
+
+Record these items for every promotion:
+
+- Release commit.
+- Migration versions applied.
+- Frontend deployment ID.
+- Backend deployment ID.
+- Test-suite totals.
+- Smoke-test operator and timestamp.
+- Known limitations.
+- Previous deployment IDs used for rollback.

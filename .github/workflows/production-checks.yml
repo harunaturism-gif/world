@@ -1,18 +1,27 @@
-name: Production checks
+name: Human World quality gate
 
 on:
   push:
     branches:
       - main
+      - 'codex/**'
   pull_request:
     branches:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  validate:
-    name: Validate Vite production build
+  frontend:
+    name: Frontend, bundle and unit checks
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -23,9 +32,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: npm ci
+
+      - name: Unit tests when configured
+        run: npm test --if-present
 
       - name: Typecheck
         run: npm run typecheck
@@ -35,3 +48,38 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Reject server credentials and direct database clients in the bundle
+        run: node scripts/verify-production-bundle.mjs
+
+  server-security:
+    name: Server security and generated artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install server dependencies
+        run: npm --prefix server ci
+
+      - name: Run all server security tests
+        run: npm --prefix server test
+
+      - name: Verify generated server artifacts are committed
+        run: git diff --exit-code -- server
+
+      - name: Reject unresolved merge markers
+        run: |
+          if git grep -n -E '^(<<<<<<<|=======|>>>>>>>)' -- ':!package-lock.json' ':!server/package-lock.json'; then
+            echo 'Unresolved merge markers found.'
+            exit 1
+          fi
