@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Human World">
+  <defs>
+    <linearGradient id="sky" x1="8" y1="7" x2="55" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67e8f9"/>
+      <stop offset="1" stop-color="#d8b4fe"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="#081b21"/>
+  <circle cx="32" cy="32" r="21" fill="none" stroke="url(#sky)" stroke-width="4"/>
+  <path d="M12 32h40M32 11c7 6 10 13 10 21S39 47 32 53c-7-6-10-13-10-21s3-15 10-21Z" fill="none" stroke="url(#sky)" stroke-linecap="round" stroke-width="3"/>
+  <circle cx="32" cy="32" r="4" fill="#fde68a"/>
+</svg>

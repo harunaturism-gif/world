@@ -10,6 +10,7 @@ The release candidate is GO only when all of the following are true:
 - The GitHub `Human World quality gate` is green for that exact commit.
 - All database migrations have been applied in order and verified.
 - Production contains no development authentication, persistence or admin bypass.
+- Public metadata identifies Human World only, browser zoom remains available and closed-beta pages are `noindex`.
 - An owner, an editor and an ordinary user have passed the RBAC smoke matrix.
 - The frontend, HTTP API and authenticated WebSocket have passed the smoke flow below.
 - A rollback target and an operator are identified before promotion.
@@ -60,9 +61,14 @@ No backend variable may use a `VITE_` prefix.
 3. Run root unit tests when configured, typecheck, lint and production build.
 4. Run the complete server security test suite.
 5. Run `node scripts/verify-production-bundle.mjs` after the build.
-6. Rebuild the server and confirm `git diff --exit-code -- server`.
-7. Review migrations for destructive operations. Closed-beta migrations should be forward compatible.
-8. Back up production data before applying a migration that changes stored data.
+6. Run `node scripts/verify-public-shell.mjs` and confirm no sitemap is published for the closed beta.
+7. Rebuild the server and confirm `git diff --exit-code -- server`.
+8. Review migrations for destructive operations. Closed-beta migrations should be forward compatible.
+9. Back up production data before applying a migration that changes stored data.
+
+## Discovery policy
+
+The closed beta intentionally ships with `noindex` metadata, a deny-all `robots.txt` and no sitemap. Before a future public launch, choose the canonical production domain, add matching canonical and social-preview URLs, create a Human World sitemap, and update the automated public-shell check in the same reviewed change.
 
 ## Promotion order
 

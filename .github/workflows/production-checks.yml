@@ -40,6 +40,9 @@ jobs:
       - name: Unit tests when configured
         run: npm test --if-present
 
+      - name: Verify public identity and closed-beta indexing
+        run: node scripts/verify-public-shell.mjs
+
       - name: Typecheck
         run: npm run typecheck
 
