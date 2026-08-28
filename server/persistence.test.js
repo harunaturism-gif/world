@@ -125,7 +125,6 @@ async function withPersistenceServer(callback) {
   const repository = new DevelopmentMemoryPersistenceRepository();
   await repository.upsertVerifiedProfile(user);
   const app = express();
-  app.use(express.json({ limit: '16kb', strict: true }));
   app.use('/api/persistence', createPersistenceRouter({ appSessionConfig, repository }));
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
