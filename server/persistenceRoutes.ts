@@ -69,6 +69,10 @@ export function createPersistenceRouter(options: {
     return next();
   });
 
+  // Parse bounded JSON only after the request has passed Origin and session
+  // authentication, but before any mutation route attempts to validate it.
+  router.use(express.json({ limit: '16kb', strict: true }));
+
   router.get('/profiles/:username', async (request, response) => {
     if (!isUsername(request.params.username)) return response.status(400).json({ error: 'Invalid profile request' });
     try {
@@ -132,8 +136,6 @@ export function createPersistenceRouter(options: {
     try { return response.json({ rooms: await options.repository!.listRooms() }); }
     catch { return persistenceFailure(response); }
   });
-
-  router.use(express.json({ limit: '16kb', strict: true }));
 
   router.get('/rooms/:roomId/layout', async (request, response) => {
     if (!isRoomId(request.params.roomId)) return response.status(400).json({ error: 'Invalid room ID' });
