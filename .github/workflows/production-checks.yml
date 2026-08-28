@@ -43,6 +43,9 @@ jobs:
       - name: Verify public identity and closed-beta indexing
         run: node scripts/verify-public-shell.mjs
 
+      - name: Test production environment preflight
+        run: node --test scripts/verify-release-env.test.mjs
+
       - name: Typecheck
         run: npm run typecheck
 

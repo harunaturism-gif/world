@@ -64,9 +64,11 @@ No backend variable may use a `VITE_` prefix.
 4. Run the complete server security test suite.
 5. Run `node scripts/verify-production-bundle.mjs` after the build.
 6. Run `node scripts/verify-public-shell.mjs` and confirm no sitemap is published for the closed beta.
-7. Rebuild the server and confirm `git diff --exit-code -- server`.
-8. Review migrations for destructive operations. Closed-beta migrations should be forward compatible.
-9. Back up production data before applying a migration that changes stored data.
+7. Run `node --test scripts/verify-release-env.test.mjs` to verify the preflight itself.
+8. Validate each deployed service without exposing values: `node scripts/verify-release-env.mjs frontend` in the frontend environment and `node scripts/verify-release-env.mjs backend` in the backend environment. For a local combined environment, use `all`.
+9. Rebuild the server and confirm `git diff --exit-code -- server`.
+10. Review migrations for destructive operations. Closed-beta migrations should be forward compatible.
+11. Back up production data before applying a migration that changes stored data.
 
 ## Discovery policy
 
