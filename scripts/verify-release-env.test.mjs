@@ -15,6 +15,7 @@ const controlledVariables = [
   'PORT',
   'SUPABASE_SERVICE_ROLE_KEY',
   'SUPABASE_URL',
+  'TRUST_PROXY_HOPS',
   'VITE_APP_IDENTITY_SECRET',
   'VITE_APP_SESSION_SECRET',
   'VITE_BACKEND_URL',
@@ -53,6 +54,7 @@ const validBackend = {
   PORT: '3001',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-key-1234567890-ABCDEFGHIJ',
   SUPABASE_URL: 'https://human-world.supabase.co',
+  TRUST_PROXY_HOPS: '1',
   WORLD_RP_ID: 'rp_humanworld123',
   WORLD_RP_SIGNING_KEY: 'signing-key-1234567890-ABCDEFGHIJ',
 };
@@ -97,4 +99,36 @@ test('backend rejects malformed owner bootstrap IDs', () => {
   const result = run('backend', { ADMIN_BOOTSTRAP_USER_IDS: 'Human_Admin' });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /ADMIN_BOOTSTRAP_USER_IDS/);
+});
+
+test('frontend rejects paths, query strings, fragments, and trailing slashes in service origins', () => {
+  for (const VITE_BACKEND_URL of [
+    'https://api.human.world/api',
+    'https://api.human.world?region=eu',
+    'https://api.human.world#backend',
+    'https://api.human.world/',
+  ]) {
+    const result = run('frontend', { VITE_BACKEND_URL });
+    assert.equal(result.status, 1, VITE_BACKEND_URL);
+    assert.match(result.stderr, /VITE_BACKEND_URL/);
+  }
+
+  for (const VITE_WS_URL of [
+    'wss://api.human.world/socket',
+    'wss://api.human.world?token=forbidden',
+    'wss://api.human.world#socket',
+    'wss://api.human.world/',
+  ]) {
+    const result = run('frontend', { VITE_WS_URL });
+    assert.equal(result.status, 1, VITE_WS_URL);
+    assert.match(result.stderr, /VITE_WS_URL/);
+  }
+});
+
+test('backend rejects unsafe trusted-proxy configuration', () => {
+  for (const TRUST_PROXY_HOPS of ['-1', '4', '01', 'true', ' 1']) {
+    const result = run('backend', { TRUST_PROXY_HOPS });
+    assert.equal(result.status, 1, TRUST_PROXY_HOPS);
+    assert.match(result.stderr, /TRUST_PROXY_HOPS/);
+  }
 });

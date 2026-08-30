@@ -14,6 +14,7 @@ import {
   AuthenticatedMultiplayerState,
   MAX_CHAT_LENGTH,
   MAX_MOVEMENT_COORDINATE,
+  WebSocketMessageRateLimiter,
   attachWebSocketAuthentication,
   authenticateWebSocketUpgrade,
   getWebSocketAuthentication,
@@ -222,4 +223,48 @@ test('raw World session identifiers never reach socket authentication or room me
   const joined = state.join(connection, 'central-plaza', 0, 0);
   assert.equal(JSON.stringify(result.authentication).includes(worldSessionId), false);
   assert.equal(JSON.stringify(joined).includes(worldSessionId), false);
+});
+
+test('WebSocket rate limits survive reconnects by using authenticated user identity', () => {
+  const limiter = new WebSocketMessageRateLimiter({
+    chatLimit: 2,
+    chatWindowMs: 10_000,
+    totalLimit: 10,
+    totalWindowMs: 10_000,
+  });
+  assert.equal(limiter.consume(user.id, 'chat', 1_000).allowed, true);
+  assert.equal(limiter.consume(user.id, 'chat', 1_001).allowed, true);
+  // A replacement socket has the same internal user ID and cannot reset this budget.
+  assert.deepEqual(limiter.consume(user.id, 'chat', 1_002), {
+    allowed: false,
+    remaining: 0,
+    retryAfterSeconds: 10,
+  });
+});
+
+test('WebSocket rate limits keep authenticated users independent and reset deterministically', () => {
+  const otherUser = deriveInternalUser(`session_${'d4'.repeat(64)}`, identitySecret);
+  const limiter = new WebSocketMessageRateLimiter({
+    joinLimit: 1,
+    joinWindowMs: 1_000,
+    totalLimit: 10,
+    totalWindowMs: 1_000,
+  });
+  assert.equal(limiter.consume(user.id, 'join', 5_000).allowed, true);
+  assert.equal(limiter.consume(user.id, 'join', 5_001).allowed, false);
+  assert.equal(limiter.consume(otherUser.id, 'join', 5_001).allowed, true);
+  assert.equal(limiter.consume(user.id, 'join', 6_000).allowed, true);
+});
+
+test('WebSocket total rate limit covers mixed message types', () => {
+  const limiter = new WebSocketMessageRateLimiter({
+    chatLimit: 10,
+    joinLimit: 10,
+    moveLimit: 10,
+    totalLimit: 2,
+    totalWindowMs: 10_000,
+  });
+  assert.equal(limiter.consume(user.id, 'join', 0).allowed, true);
+  assert.equal(limiter.consume(user.id, 'move', 1).allowed, true);
+  assert.equal(limiter.consume(user.id, 'chat', 2).allowed, false);
 });

@@ -1,8 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { extractSessionToken, verifyApplicationSession, } from './appSession.js';
+import { FixedWindowRateLimiter } from './rateLimit.js';
 export const MAX_WEBSOCKET_PAYLOAD_BYTES = 16 * 1024;
 export const MAX_MOVEMENT_COORDINATE = 10_000;
 export const MAX_CHAT_LENGTH = 280;
+export const WEB_SOCKET_TOTAL_RATE_LIMIT = 240;
+export const WEB_SOCKET_TOTAL_RATE_WINDOW_MS = 10_000;
+export const WEB_SOCKET_JOIN_RATE_LIMIT = 6;
+export const WEB_SOCKET_JOIN_RATE_WINDOW_MS = 30_000;
+export const WEB_SOCKET_MOVE_RATE_LIMIT = 200;
+export const WEB_SOCKET_MOVE_RATE_WINDOW_MS = 10_000;
+export const WEB_SOCKET_CHAT_RATE_LIMIT = 8;
+export const WEB_SOCKET_CHAT_RATE_WINDOW_MS = 30_000;
 export const WEB_SOCKET_AUTH_CONTEXT = Symbol('human-world.websocket-auth');
 const ROOM_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 function isPlainObject(value) {
@@ -90,6 +99,41 @@ export function parseClientWebSocketMessage(value) {
         return { type: 'chat', text };
     }
     return null;
+}
+export class WebSocketMessageRateLimiter {
+    total;
+    byType;
+    constructor(options = {}) {
+        const maxKeys = options.maxUsers ?? 10_000;
+        this.total = new FixedWindowRateLimiter({
+            limit: options.totalLimit ?? WEB_SOCKET_TOTAL_RATE_LIMIT,
+            maxKeys,
+            windowMs: options.totalWindowMs ?? WEB_SOCKET_TOTAL_RATE_WINDOW_MS,
+        });
+        this.byType = {
+            chat: new FixedWindowRateLimiter({
+                limit: options.chatLimit ?? WEB_SOCKET_CHAT_RATE_LIMIT,
+                maxKeys,
+                windowMs: options.chatWindowMs ?? WEB_SOCKET_CHAT_RATE_WINDOW_MS,
+            }),
+            join: new FixedWindowRateLimiter({
+                limit: options.joinLimit ?? WEB_SOCKET_JOIN_RATE_LIMIT,
+                maxKeys,
+                windowMs: options.joinWindowMs ?? WEB_SOCKET_JOIN_RATE_WINDOW_MS,
+            }),
+            move: new FixedWindowRateLimiter({
+                limit: options.moveLimit ?? WEB_SOCKET_MOVE_RATE_LIMIT,
+                maxKeys,
+                windowMs: options.moveWindowMs ?? WEB_SOCKET_MOVE_RATE_WINDOW_MS,
+            }),
+        };
+    }
+    consume(userId, messageType, now = Date.now()) {
+        const totalDecision = this.total.consume(userId, now);
+        if (!totalDecision.allowed)
+            return totalDecision;
+        return this.byType[messageType].consume(userId, now);
+    }
 }
 export class AuthenticatedMultiplayerState {
     createConnectionId;

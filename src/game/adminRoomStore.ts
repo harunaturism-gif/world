@@ -116,7 +116,13 @@ export function deleteRoomObject(sourceRoom: RoomDefinition, objectId: string): 
 export function addCatalogObject(sourceRoom: RoomDefinition, catalogId: FurnitureId, position: IsoPoint): RoomDefinition {
   const room = clone(sourceRoom);
   const definition = furnitureCatalog[catalogId];
-  const uniqueId = `${definition.id}-admin-${Date.now().toString(36)}`;
+  const idPrefix = `${definition.id}-admin-${Date.now().toString(36)}`;
+  let uniqueId = idPrefix;
+  let suffix = 2;
+  while (room.objects.some((object) => object.id === uniqueId)) {
+    uniqueId = `${idPrefix}-${suffix}`;
+    suffix += 1;
+  }
   const object: RoomObjectDefinition = placeFurniture(catalogId, uniqueId, position);
   room.objects.push(object);
   return room;

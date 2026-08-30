@@ -33,8 +33,8 @@ Never copy secret values into tickets, chat, build logs or this repository.
 
 Frontend variables:
 
-- `VITE_BACKEND_URL` — production HTTPS backend URL.
-- `VITE_WS_URL` — production WSS backend URL.
+- `VITE_BACKEND_URL` — exact production HTTPS backend origin, without path, query, fragment or trailing slash.
+- `VITE_WS_URL` — exact production WSS backend origin, without path, query, fragment or trailing slash.
 - `VITE_WORLD_APP_ID` — public World application identifier.
 - `VITE_ENABLE_DEV_AUTH=false`.
 - `VITE_ENABLE_DEV_ADMIN=false`.
@@ -43,6 +43,7 @@ Backend variables:
 
 - `NODE_ENV=production`.
 - `PORT`.
+- `TRUST_PROXY_HOPS` — exact trusted reverse-proxy hop count from 0 to 3; use `0` for direct internet traffic and configure the real hosting topology before enabling forwarded client IPs.
 - `APP_ORIGIN` — exact frontend origin, without wildcard matching.
 - `WORLD_RP_ID`.
 - `WORLD_RP_SIGNING_KEY`.
@@ -79,7 +80,7 @@ The closed beta intentionally ships with `noindex` metadata, a deny-all `robots.
 1. Apply pending Supabase migrations.
 2. Verify RLS is enabled and forced and that `anon`/`authenticated` grants remain revoked.
 3. Deploy the backend candidate without redirecting frontend traffic.
-4. Verify backend health, exact-Origin rejection, cookie authentication and WSS upgrade rejection/acceptance.
+4. Verify backend health, exact-Origin rejection, cookie authentication, auth rate-limit `429` behavior and WSS upgrade rejection/acceptance.
 5. Deploy a frontend preview against the candidate backend.
 6. Complete the smoke matrix.
 7. Promote the already-tested frontend artifact; do not rebuild a different artifact for production.
@@ -94,7 +95,7 @@ Run on desktop and a 390 × 844 mobile viewport:
 3. Refresh restores the authenticated session without exposing a token to JavaScript.
 4. World map loads persisted rooms.
 5. Enter a room and confirm the authenticated WebSocket identity.
-6. Move and chat; forged identity fields must be rejected.
+6. Move and chat; forged identity fields must be rejected and sustained auth/message floods must be throttled without affecting another user.
 7. Create a post, like once, follow another user and save an avatar; refresh and confirm persistence.
 8. Confirm a second like is idempotent.
 9. Confirm an ordinary user cannot see or open admin controls.

@@ -49,6 +49,10 @@ function productionUrl(variable, protocols) {
       fail(variable, `must be a public ${protocols.join(' or ')} URL without embedded credentials`);
       return null;
     }
+    if (parsed.pathname !== '/' || parsed.search || parsed.hash || value !== parsed.origin) {
+      fail(variable, 'must be an exact origin without a path, query string, fragment, or trailing slash');
+      return null;
+    }
     return parsed;
   } catch {
     fail(variable, 'must be an absolute URL');
@@ -115,6 +119,9 @@ function verifyBackend() {
 
   if (environment.PORT !== undefined && !/^[1-9][0-9]{0,4}$/.test(environment.PORT)) {
     fail('PORT', 'must be an integer from 1 to 99999 when set');
+  }
+  if (environment.TRUST_PROXY_HOPS !== undefined && !/^[0-3]$/.test(environment.TRUST_PROXY_HOPS)) {
+    fail('TRUST_PROXY_HOPS', 'must be an integer from 0 to 3 when set');
   }
   if (!environment.ADMIN_BOOTSTRAP_USER_IDS) {
     warnings.push('ADMIN_BOOTSTRAP_USER_IDS is empty; confirm at least one owner already exists.');

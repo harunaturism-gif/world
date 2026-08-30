@@ -6,10 +6,12 @@ import { fileURLToPath } from 'url';
 import { createSessionRpContext, getVerifiedWorldSession, isValidProofPayload, isValidWorldRpId, } from './authSession.js';
 import { createAppSessionConfig, createSanitizedAuthResponse, deriveInternalUser, extractSessionToken, isExpectedBrowserOrigin, serializeLogoutCookie, serializeSessionCookie, verifyApplicationSession, } from './appSession.js';
 import { createAdminConfig, shouldBootstrapOwner } from './adminAuthorization.js';
+import { createAuthRateLimitMiddleware } from './authRateLimit.js';
 import { createAdminRouter } from './adminRoutes.js';
 import { DevelopmentAdminRepository } from './developmentAdminRepository.js';
 import { createSupabaseAdminRepository } from './supabaseAdminRepository.js';
-import { AuthenticatedMultiplayerState, MAX_WEBSOCKET_PAYLOAD_BYTES, attachWebSocketAuthentication, authenticateWebSocketUpgrade, getWebSocketAuthentication, parseClientWebSocketMessage, } from './webSocketSession.js';
+import { AuthenticatedMultiplayerState, MAX_WEBSOCKET_PAYLOAD_BYTES, WebSocketMessageRateLimiter, attachWebSocketAuthentication, authenticateWebSocketUpgrade, getWebSocketAuthentication, parseClientWebSocketMessage, } from './webSocketSession.js';
+import { FixedWindowRateLimiter, parseTrustedProxyHops } from './rateLimit.js';
 import { createPersistenceConfig, issuePersistedApplicationSession } from './persistence.js';
 import { createPersistenceRouter } from './persistenceRoutes.js';
 import { createSupabasePersistenceRepository, DevelopmentMemoryPersistenceRepository, } from './supabasePersistence.js';
@@ -21,6 +23,10 @@ const wss = new WebSocketServer({
     noServer: true,
     perMessageDeflate: false,
 });
+const trustedProxyHops = parseTrustedProxyHops(process.env.TRUST_PROXY_HOPS);
+if (trustedProxyHops === null)
+    throw new Error('Invalid trusted-proxy configuration');
+app.set('trust proxy', trustedProxyHops);
 const appSessionConfig = createAppSessionConfig(process.env);
 if (!appSessionConfig && process.env.NODE_ENV !== 'development') {
     throw new Error('Invalid application-session server configuration');
@@ -110,6 +116,10 @@ app.use('/api/auth', (req, res, next) => {
     }
     return next();
 });
+const sessionContextRateLimiter = new FixedWindowRateLimiter({ limit: 10, windowMs: 60_000 });
+const worldVerificationRateLimiter = new FixedWindowRateLimiter({ limit: 5, windowMs: 60_000 });
+app.use('/api/auth/session-rp-context', createAuthRateLimitMiddleware(sessionContextRateLimiter));
+app.use('/api/auth/verify', createAuthRateLimitMiddleware(worldVerificationRateLimiter));
 app.use('/api/auth', express.json({ limit: '16kb', strict: true }));
 // Session proofs use an RP signature without an action. Action-bound signatures
 // belong to uniqueness proofs and must not influence this endpoint.
@@ -222,6 +232,7 @@ app.use((error, _request, response, _next) => {
     return response.status(500).json({ error: 'Request failed' });
 });
 const multiplayerState = new AuthenticatedMultiplayerState();
+const webSocketMessageRateLimiter = new WebSocketMessageRateLimiter();
 function sendWebSocketMessage(socket, message) {
     if (socket.readyState !== WebSocket.OPEN)
         return;
@@ -280,6 +291,11 @@ wss.on('connection', (ws) => {
         const message = parseClientWebSocketMessage(parsed);
         if (!message) {
             ws.close(1008, 'Invalid message');
+            return;
+        }
+        const rateLimitDecision = webSocketMessageRateLimiter.consume(authentication.user.id, message.type);
+        if (!rateLimitDecision.allowed) {
+            ws.close(1008, 'Rate limit exceeded');
             return;
         }
         if (message.type === 'join') {

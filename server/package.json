@@ -4,7 +4,7 @@
     "description":  "",
     "main":  "index.js",
     "scripts":  {
-                    "test":  "npm run build && node --test authSession.test.js appSession.test.js webSocketSession.test.js persistence.test.js adminAuthorization.test.js",
+                    "test":  "npm run build && node --test authSession.test.js appSession.test.js rateLimit.test.js authRateLimit.test.js webSocketSession.test.js persistence.test.js adminAuthorization.test.js",
                     "build":  "tsc -p tsconfig.json",
                     "start":  "node index.js"
                 },
